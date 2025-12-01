@@ -129,10 +129,22 @@ async function startServer() {
       console.log(`Server running on port ${PORT}`);
       console.log(`Base URL: ${process.env.BASE_URL || `http://localhost:${PORT}`}`);
       console.log(`Frontend: http://localhost:5173`);
-      if (!process.env.DISCORD_BOT_TOKEN) {
-        console.log(`\n⚠️  DISCORD_BOT_TOKEN not set. Bot will not start.`);
-      }
     });
+
+    // Start Discord bot if token is provided
+    if (process.env.DISCORD_BOT_TOKEN) {
+      try {
+        // Start bot in the same process
+        const path = require('path');
+        require(path.join(__dirname, '../bot/index.js'));
+        console.log('🤖 Discord bot starting...');
+      } catch (botError) {
+        console.error('❌ Failed to start Discord bot:', botError.message);
+        // Don't exit - server can still run without bot
+      }
+    } else {
+      console.log(`\n⚠️  DISCORD_BOT_TOKEN not set. Bot will not start.`);
+    }
 
     // Handle port already in use error
     server.on('error', (err) => {
