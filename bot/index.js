@@ -3061,6 +3061,186 @@ class MiddlemanBot extends EventEmitter {
     }
   }
 
+  async handleSlashWork(interaction) {
+    try {
+      if (!this.casino || !this.casino.casinoEnabled) {
+        return await interaction.editReply({ 
+          content: '❌ Casino features are currently disabled due to database issues. Please try again later.' 
+        });
+      }
+
+      const result = await this.casino.work(interaction.user.id);
+      
+      if (!result.success) {
+        const minutesLeft = Math.ceil(result.minutesLeft);
+        const embed = new EmbedBuilder()
+          .setTitle('⏰ Work Cooldown')
+          .setColor(0xFFA500)
+          .setDescription(`Slow down, you workaholic piece of shit. You just worked **${minutesLeft} minutes ago**.\n\nCome back in **${minutesLeft} minutes**, you impatient fuck.`)
+          .setTimestamp();
+        return await interaction.editReply({ embeds: [embed] });
+      }
+
+      const workMessages = [
+        'You worked your ass off at McDonald\'s and earned some coins. Pathetic.',
+        'You did some manual labor and got paid. At least you\'re doing something productive for once.',
+        'You worked a shift at a gas station. The coins are yours, you minimum wage slave.',
+        'You did some freelance work online. Here\'s your payment, you digital peasant.',
+        'You worked construction for a day. Here are your hard-earned coins, you blue-collar worker.',
+        'You worked as a cashier. The coins are yours, you retail slave.',
+        'You did some delivery work. Here\'s your payment, you delivery driver.',
+        'You worked overtime and got paid extra. Good for you, you workaholic.'
+      ];
+
+      const workMessage = workMessages[Math.floor(Math.random() * workMessages.length)];
+
+      const embed = new EmbedBuilder()
+        .setTitle('💼 Work Complete!')
+        .setColor(0x00D166)
+        .setDescription(`${workMessage}\n\n**Earned:** ${result.earned.toLocaleString()} coins\n**New Balance:** ${result.balance.toLocaleString()} coins`)
+        .setFooter({ text: `User: ${interaction.user.tag}` })
+        .setTimestamp();
+
+      await interaction.editReply({ embeds: [embed] });
+    } catch (error) {
+      console.error('Error in handleSlashWork:', error);
+      await interaction.editReply({ 
+        content: `❌ ${getSnarkyResponse('error')} ${error.message || 'Failed to work. Casino features may be disabled.'}` 
+      });
+    }
+  }
+
+  async handleSlashCollect(interaction) {
+    try {
+      if (!this.casino || !this.casino.casinoEnabled) {
+        return await interaction.editReply({ 
+          content: '❌ Casino features are currently disabled due to database issues. Please try again later.' 
+        });
+      }
+
+      // Get user's roles
+      const member = await interaction.guild.members.fetch(interaction.user.id);
+      const roles = member.roles.cache;
+
+      // Role income mapping - check for role names containing these keywords
+      const roleIncomeMap = [
+        { keyword: 'Regular', income: 125 }, // Highest priority
+        { keyword: 'Active Member', income: 75 },
+        { keyword: 'Active', income: 75 },
+        { keyword: 'Beginner', income: 25 }
+      ];
+
+      // Find the highest paying role the user has
+      let earned = 0;
+      let roleName = null;
+      let roleFound = false;
+
+      // Check roles in order of highest to lowest income
+      for (const roleCheck of roleIncomeMap) {
+        const role = roles.find(r => r.name.includes(roleCheck.keyword));
+        if (role) {
+          earned = roleCheck.income;
+          roleName = role.name;
+          roleFound = true;
+          break;
+        }
+      }
+
+      // Also check for VIP role separately (100 coins)
+      if (!roleFound) {
+        const vipRole = roles.find(r => r.name.includes('VIP') || r.name.includes('💎'));
+        if (vipRole) {
+          earned = 100;
+          roleName = vipRole.name;
+          roleFound = true;
+        }
+      }
+
+      if (!roleFound) {
+        const embed = new EmbedBuilder()
+          .setTitle('❌ No Role Income')
+          .setColor(0xFF0000)
+          .setDescription('You don\'t have any roles that give income, you roleless peasant. Get a role first, you absolute nobody.')
+          .setTimestamp();
+        return await interaction.editReply({ embeds: [embed] });
+      }
+
+      const result = await this.casino.collectRoleIncome(interaction.user.id, earned);
+      
+      if (!result.success) {
+        const embed = new EmbedBuilder()
+          .setTitle('⏰ Already Collected')
+          .setColor(0xFFA500)
+          .setDescription(`You already collected your role income today, you greedy fuck.\n\nCome back tomorrow, you impatient asshole.`)
+          .setTimestamp();
+        return await interaction.editReply({ embeds: [embed] });
+      }
+
+      const embed = new EmbedBuilder()
+        .setTitle('💰 Role Income Collected!')
+        .setColor(0x00D166)
+        .setDescription(`You collected your **${roleName}** role income!\n\n**Earned:** ${earned.toLocaleString()} coins\n**New Balance:** ${result.balance.toLocaleString()} coins`)
+        .setFooter({ text: `User: ${interaction.user.tag}` })
+        .setTimestamp();
+
+      await interaction.editReply({ embeds: [embed] });
+    } catch (error) {
+      console.error('Error in handleSlashCollect:', error);
+      await interaction.editReply({ 
+        content: `❌ ${getSnarkyResponse('error')} ${error.message || 'Failed to collect. Casino features may be disabled.'}` 
+      });
+    }
+  }
+
+  async handleSlashSlut(interaction) {
+    try {
+      if (!this.casino || !this.casino.casinoEnabled) {
+        return await interaction.editReply({ 
+          content: '❌ Casino features are currently disabled due to database issues. Please try again later.' 
+        });
+      }
+
+      const result = await this.casino.slut(interaction.user.id);
+      
+      if (!result.success) {
+        const minutesLeft = Math.ceil(result.minutesLeft);
+        const embed = new EmbedBuilder()
+          .setTitle('⏰ Cooldown Active')
+          .setColor(0xFFA500)
+          .setDescription(`Slow down, you horny fuck. You just did that **${minutesLeft} minutes ago**.\n\nCome back in **${minutesLeft} minutes**, you desperate piece of shit.`)
+          .setTimestamp();
+        return await interaction.editReply({ embeds: [embed] });
+      }
+
+      const slutMessages = [
+        'You did some... questionable things and earned coins. I\'m not judging, but I am judging.',
+        'You worked the streets and got paid. Here are your coins, you absolute degenerate.',
+        'You did some OnlyFans content and got tipped. The coins are yours, you digital whore.',
+        'You sold some... services... and got paid. Here\'s your payment, you entrepreneurial slut.',
+        'You did some cam work and earned coins. The coins are yours, you exhibitionist.',
+        'You did some sugar baby work and got paid. Here\'s your allowance, you gold digger.',
+        'You did some escort work and earned coins. The coins are yours, you professional companion.',
+        'You did some adult content creation and got paid. Here\'s your payment, you content creator.'
+      ];
+
+      const slutMessage = slutMessages[Math.floor(Math.random() * slutMessages.length)];
+
+      const embed = new EmbedBuilder()
+        .setTitle('💋 Work Complete!')
+        .setColor(0xFF69B4)
+        .setDescription(`${slutMessage}\n\n**Earned:** ${result.earned.toLocaleString()} coins\n**New Balance:** ${result.balance.toLocaleString()} coins`)
+        .setFooter({ text: `User: ${interaction.user.tag}` })
+        .setTimestamp();
+
+      await interaction.editReply({ embeds: [embed] });
+    } catch (error) {
+      console.error('Error in handleSlashSlut:', error);
+      await interaction.editReply({ 
+        content: `❌ ${getSnarkyResponse('error')} ${error.message || 'Failed to work. Casino features may be disabled.'}` 
+      });
+    }
+  }
+
   async handleSlashCasinoStats(interaction) {
     try {
       const targetUser = interaction.options.getUser('user');
