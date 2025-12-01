@@ -139,19 +139,27 @@ async function startServer() {
         const path = require('path');
         const fs = require('fs');
         
+        // Debug: Log current directory info
+        console.log(`📁 Current working directory: ${process.cwd()}`);
+        console.log(`📁 __dirname: ${__dirname}`);
+        
         let botPath = null;
         // Try different possible paths
         const possiblePaths = [
           path.join(__dirname, '../bot/index.js'),  // Local dev: backend/../bot/index.js
-          path.join(process.cwd(), 'bot/index.js'), // Railway: /app/bot/index.js
+          path.join(process.cwd(), 'bot/index.js'), // Railway: /app/bot/index.js if cwd is /app
           path.join(__dirname, '../../bot/index.js'), // Alternative structure
           '/app/bot/index.js', // Absolute path for Railway
-          path.join(process.cwd(), '../bot/index.js') // Another alternative
+          path.join(process.cwd(), '../bot/index.js'), // Another alternative
+          path.join(process.cwd(), 'backend/../bot/index.js') // If cwd is project root
         ];
         
+        console.log(`🔍 Checking bot paths...`);
         for (const testPath of possiblePaths) {
+          console.log(`  - Checking: ${testPath} (exists: ${fs.existsSync(testPath)})`);
           if (fs.existsSync(testPath)) {
             botPath = testPath;
+            console.log(`✅ Found bot at: ${botPath}`);
             break;
           }
         }
