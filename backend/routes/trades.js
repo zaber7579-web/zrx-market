@@ -100,8 +100,26 @@ router.get('/', async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Error fetching trades:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('❌ ERROR FETCHING TRADES:');
+    console.error('Error message:', error.message);
+    console.error('Error code:', error.code);
+    console.error('Error errno:', error.errno);
+    console.error('SQL Query:', query);
+    console.error('Query params:', params);
+    console.error('Full error:', error);
+    console.error('Stack trace:', error.stack);
+    
+    // Check if it's a missing column error
+    if (error.message && error.message.includes('no such column')) {
+      console.error('⚠️  DATABASE SCHEMA ISSUE: Missing column detected!');
+      console.error('⚠️  This usually means the database migrations haven\'t run yet.');
+      console.error('⚠️  Please redeploy Railway to run migrations.');
+    }
+    
+    res.status(500).json({ 
+      error: 'Internal server error',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
   }
 });
 
@@ -148,20 +166,45 @@ router.get('/user/involved', ensureAuth, async (req, res) => {
 
     res.json(parsedTrades);
   } catch (error) {
-    console.error('Error fetching user trades:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('❌ ERROR FETCHING USER TRADES:');
+    console.error('User ID:', req.user?.discordId);
+    console.error('Error message:', error.message);
+    console.error('Error code:', error.code);
+    console.error('Full error:', error);
+    console.error('Stack trace:', error.stack);
+    if (error.message && error.message.includes('no such column')) {
+      console.error('⚠️  DATABASE SCHEMA ISSUE: Missing column detected!');
+    }
+    res.status(500).json({ 
+      error: 'Internal server error',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
   }
 });
 
 // Get single trade
 router.get('/:id', async (req, res) => {
   try {
-    let trade = await dbHelpers.get(
-      `SELECT t.*, u.username, u.avatar, t.isCrossTrade FROM trades t 
-       JOIN users u ON t.creatorId = u.discordId 
-       WHERE t.id = ?`,
-      [req.params.id]
-    );
+    let trade;
+    try {
+      trade = await dbHelpers.get(
+        `SELECT t.*, u.username, u.avatar, t.isCrossTrade FROM trades t 
+         JOIN users u ON t.creatorId = u.discordId 
+         WHERE t.id = ?`,
+        [req.params.id]
+      );
+    } catch (dbError) {
+      console.error('❌ ERROR FETCHING SINGLE TRADE:');
+      console.error('Trade ID:', req.params.id);
+      console.error('Error message:', dbError.message);
+      console.error('Error code:', dbError.code);
+      console.error('Full error:', dbError);
+      console.error('Stack trace:', dbError.stack);
+      if (dbError.message && dbError.message.includes('no such column')) {
+        console.error('⚠️  DATABASE SCHEMA ISSUE: Missing column (isCrossTrade)');
+      }
+      throw dbError; // Re-throw to be caught by outer catch
+    }
 
     if (!trade) {
       return res.status(404).json({ error: 'Trade not found' });
@@ -176,8 +219,19 @@ router.get('/:id', async (req, res) => {
 
     res.json(trade);
   } catch (error) {
-    console.error('Error fetching trade:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('❌ ERROR FETCHING SINGLE TRADE (outer catch):');
+    console.error('Trade ID:', req.params.id);
+    console.error('Error message:', error.message);
+    console.error('Error code:', error.code);
+    console.error('Full error:', error);
+    console.error('Stack trace:', error.stack);
+    if (error.message && error.message.includes('no such column')) {
+      console.error('⚠️  DATABASE SCHEMA ISSUE: Missing column detected!');
+    }
+    res.status(500).json({ 
+      error: 'Internal server error',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
   }
 });
 

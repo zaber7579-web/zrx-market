@@ -41,8 +41,21 @@ router.get('/', ensureAuth, messageLimiter, async (req, res) => {
     const messages = await dbHelpers.all(query, params);
     res.json(messages);
   } catch (error) {
-    console.error('Error fetching messages:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('❌ ERROR FETCHING MESSAGES:');
+    console.error('Error message:', error.message);
+    console.error('Error code:', error.code);
+    console.error('Error errno:', error.errno);
+    console.error('SQL Query:', query);
+    console.error('Query params:', params);
+    console.error('Full error:', error);
+    console.error('Stack trace:', error.stack);
+    if (error.message && error.message.includes('no such column')) {
+      console.error('⚠️  DATABASE SCHEMA ISSUE: Missing column detected!');
+    }
+    res.status(500).json({ 
+      error: 'Internal server error',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
   }
 });
 
@@ -150,7 +163,15 @@ router.post('/', ensureAuth, messageSendLimiter, [
 
     res.status(201).json(message);
   } catch (error) {
-    console.error('Error sending message:', error);
+    console.error('❌ ERROR SENDING MESSAGE:');
+    console.error('Error message:', error.message);
+    console.error('Error code:', error.code);
+    console.error('Error errno:', error.errno);
+    console.error('Full error:', error);
+    console.error('Stack trace:', error.stack);
+    if (error.message && error.message.includes('no such column')) {
+      console.error('⚠️  DATABASE SCHEMA ISSUE: Missing column detected!');
+    }
     res.status(500).json({ 
       error: error.message || 'Internal server error',
       details: process.env.NODE_ENV === 'development' ? error.stack : undefined
@@ -253,8 +274,16 @@ router.get('/conversations', ensureAuth, messageLimiter, async (req, res) => {
     // Always return an array, even if empty
     res.json(validConversations || []);
   } catch (error) {
-    console.error('Error fetching conversations:', error);
-    console.error('Error stack:', error.stack);
+    console.error('❌ ERROR FETCHING CONVERSATIONS:');
+    console.error('User ID:', req.user?.discordId);
+    console.error('Error message:', error.message);
+    console.error('Error code:', error.code);
+    console.error('Error errno:', error.errno);
+    console.error('Full error:', error);
+    console.error('Stack trace:', error.stack);
+    if (error.message && error.message.includes('no such column')) {
+      console.error('⚠️  DATABASE SCHEMA ISSUE: Missing column detected!');
+    }
     // Return empty array instead of error to prevent frontend from breaking
     res.json([]);
   }
@@ -269,8 +298,27 @@ router.get('/unreadCount', ensureAuth, messageLimiter, async (req, res) => {
     );
     res.json({ count: result.count });
   } catch (error) {
-    console.error('Error fetching unread count:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('❌ ERROR FETCHING UNREAD MESSAGE COUNT:');
+    console.error('User ID:', req.user.discordId);
+    console.error('Error message:', error.message);
+    console.error('Error code:', error.code);
+    console.error('Error errno:', error.errno);
+    console.error('SQL Query: SELECT COUNT(*) as count FROM messages WHERE recipientId = ? AND isRead = 0');
+    console.error('Query params:', [req.user.discordId]);
+    console.error('Full error:', error);
+    console.error('Stack trace:', error.stack);
+    
+    // Check if it's a missing column error
+    if (error.message && error.message.includes('no such column')) {
+      console.error('⚠️  DATABASE SCHEMA ISSUE: Missing column (isRead) detected!');
+      console.error('⚠️  This usually means the database migrations haven\'t run yet.');
+      console.error('⚠️  Please redeploy Railway to run migrations.');
+    }
+    
+    res.status(500).json({ 
+      error: 'Internal server error',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
   }
 });
 
@@ -290,8 +338,21 @@ router.post('/markAsRead', ensureAuth, async (req, res) => {
     await dbHelpers.run(query, params);
     res.json({ message: 'Messages marked as read' });
   } catch (error) {
-    console.error('Error marking messages as read:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('❌ ERROR MARKING MESSAGES AS READ:');
+    console.error('User ID:', req.user.discordId);
+    console.error('Error message:', error.message);
+    console.error('Error code:', error.code);
+    console.error('SQL Query:', query);
+    console.error('Query params:', params);
+    console.error('Full error:', error);
+    console.error('Stack trace:', error.stack);
+    if (error.message && error.message.includes('no such column')) {
+      console.error('⚠️  DATABASE SCHEMA ISSUE: Missing column (isRead)');
+    }
+    res.status(500).json({ 
+      error: 'Internal server error',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
   }
 });
 
@@ -325,8 +386,16 @@ router.delete('/:id', ensureAuth, async (req, res) => {
 
     res.json({ message: 'Message deleted successfully' });
   } catch (error) {
-    console.error('Error deleting message:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('❌ ERROR DELETING MESSAGE:');
+    console.error('Message ID:', req.params.id);
+    console.error('Error message:', error.message);
+    console.error('Error code:', error.code);
+    console.error('Full error:', error);
+    console.error('Stack trace:', error.stack);
+    res.status(500).json({ 
+      error: 'Internal server error',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
   }
 });
 
