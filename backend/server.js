@@ -169,7 +169,9 @@ async function startServer() {
           require(botPath);
           console.log('🤖 Discord bot module loaded');
         } else {
-          console.error('❌ Could not find bot/index.js. Tried paths:', possiblePaths);
+          console.warn('⚠️  Could not find bot/index.js. Bot will not start.');
+          console.warn('📝 Note: If deploying on Railway, ensure the root directory is set to the project root, not /backend');
+          console.warn('   Or configure Railway to include the bot directory in the deployment.');
           // Don't exit - server can still run without bot
         }
       } catch (botError) {
