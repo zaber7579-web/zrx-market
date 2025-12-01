@@ -240,6 +240,18 @@ class MiddlemanBot extends EventEmitter {
           .setDescription('Claim your daily reward (500-1000 coins)'),
         
         new SlashCommandBuilder()
+          .setName('work')
+          .setDescription('Work to earn coins (cooldown: 1 hour)'),
+        
+        new SlashCommandBuilder()
+          .setName('collect')
+          .setDescription('Collect role-based income based on your Discord roles'),
+        
+        new SlashCommandBuilder()
+          .setName('slut')
+          .setDescription('Earn coins the... fun way (cooldown: 30 minutes)'),
+        
+        new SlashCommandBuilder()
           .setName('casinostats')
           .setDescription('View casino statistics')
           .addUserOption(option =>
@@ -511,7 +523,7 @@ class MiddlemanBot extends EventEmitter {
     const CASINO_CHANNEL_ID = '1406780875911336007';
 
     // Commands that need async work - defer immediately to prevent timeout
-    const asyncCommands = ['balance', 'daily', 'casinostats', 'coinflip', 'dice', 'double', 'roulette', 'blackjack', 'hit', 'stand', 
+    const asyncCommands = ['balance', 'daily', 'work', 'collect', 'slut', 'casinostats', 'coinflip', 'dice', 'double', 'roulette', 'blackjack', 'hit', 'stand', 
                            'stats', 'user', 'trade', 'mm', 'blacklist', 'report', 'verify', 'unverify', 'serverstats', 'cleanup', 
                            'casinoadd', 'casinoremove', 'casinoreset'];
     const needsDefer = asyncCommands.includes(command);
@@ -526,7 +538,7 @@ class MiddlemanBot extends EventEmitter {
     }
 
     // Casino commands channel check (after defer to prevent timeout)
-    const casinoCommands = ['balance', 'daily', 'casinostats', 'coinflip', 'dice', 'double', 'roulette', 'blackjack', 'hit', 'stand'];
+    const casinoCommands = ['balance', 'daily', 'work', 'collect', 'slut', 'casinostats', 'coinflip', 'dice', 'double', 'roulette', 'blackjack', 'hit', 'stand'];
     if (casinoCommands.includes(command)) {
       if (interaction.channel.id !== CASINO_CHANNEL_ID) {
         const snarkyResponses = [
@@ -570,6 +582,15 @@ class MiddlemanBot extends EventEmitter {
           break;
         case 'daily':
           await this.handleSlashDaily(interaction);
+          break;
+        case 'work':
+          await this.handleSlashWork(interaction);
+          break;
+        case 'collect':
+          await this.handleSlashCollect(interaction);
+          break;
+        case 'slut':
+          await this.handleSlashSlut(interaction);
           break;
         case 'casinostats':
           await this.handleSlashCasinoStats(interaction);

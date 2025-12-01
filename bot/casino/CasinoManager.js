@@ -47,16 +47,19 @@ class CasinoManager {
 
           // Now try to create the table
           this.db.run(`
-            CREATE TABLE IF NOT EXISTS casino_balances (
-              discordId TEXT PRIMARY KEY,
-              balance INTEGER DEFAULT 1000,
-              totalWon INTEGER DEFAULT 0,
-              totalLost INTEGER DEFAULT 0,
-              gamesPlayed INTEGER DEFAULT 0,
-              lastDaily TEXT,
-              createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
-              updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP
-            )
+          CREATE TABLE IF NOT EXISTS casino_balances (
+            discordId TEXT PRIMARY KEY,
+            balance INTEGER DEFAULT 1000,
+            totalWon INTEGER DEFAULT 0,
+            totalLost INTEGER DEFAULT 0,
+            gamesPlayed INTEGER DEFAULT 0,
+            lastDaily TEXT,
+            lastWork TEXT,
+            lastRoleCollect TEXT,
+            lastSlut TEXT,
+            createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP
+          )
           `, (err) => {
             clearTimeout(timeout);
             if (err) {
@@ -296,6 +299,248 @@ class CasinoManager {
                     (err, row) => {
                       if (err) reject(err);
                       else resolve({ success: true, reward, balance: row.balance });
+                    }
+                  );
+                }
+              }
+            }
+          );
+        }
+      );
+    });
+  }
+
+  async work(userId) {
+    if (!this.casinoEnabled) {
+      throw new Error('Casino features are disabled');
+    }
+
+    return new Promise((resolve, reject) => {
+      const db = this.db;
+      const timeout = setTimeout(() => {
+        reject(new Error('Database query timed out'));
+      }, 3000);
+
+      db.get(
+        'SELECT lastWork FROM casino_balances WHERE discordId = ?',
+        [userId],
+        (err, row) => {
+          clearTimeout(timeout);
+          if (err) {
+            reject(err);
+            return;
+          }
+
+          const now = new Date();
+          const lastWork = row?.lastWork ? new Date(row.lastWork) : null;
+          const cooldownMs = 60 * 60 * 1000; // 1 hour
+          const canWork = !lastWork || (now - lastWork) >= cooldownMs;
+
+          if (!canWork) {
+            const minutesLeft = Math.ceil((cooldownMs - (now - lastWork)) / (60 * 1000));
+            resolve({ success: false, minutesLeft });
+            return;
+          }
+
+          const earned = 50 + Math.floor(Math.random() * 100); // 50-150 coins
+
+          db.run(
+            `UPDATE casino_balances 
+             SET balance = balance + ?,
+                 lastWork = CURRENT_TIMESTAMP,
+                 updatedAt = CURRENT_TIMESTAMP
+             WHERE discordId = ?`,
+            [earned, userId],
+            function(updateErr) {
+              if (updateErr) {
+                reject(updateErr);
+              } else {
+                if (this.changes === 0) {
+                  // Create user
+                  db.run(
+                    'INSERT INTO casino_balances (discordId, balance, lastWork) VALUES (?, ?, CURRENT_TIMESTAMP)',
+                    [userId, 1000 + earned],
+                    (insertErr) => {
+                      if (insertErr) reject(insertErr);
+                      else {
+                        db.get(
+                          'SELECT balance FROM casino_balances WHERE discordId = ?',
+                          [userId],
+                          (getErr, newRow) => {
+                            if (getErr) reject(getErr);
+                            else resolve({ success: true, earned, balance: newRow.balance });
+                          }
+                        );
+                      }
+                    }
+                  );
+                } else {
+                  db.get(
+                    'SELECT balance FROM casino_balances WHERE discordId = ?',
+                    [userId],
+                    (getErr, newRow) => {
+                      if (getErr) reject(getErr);
+                      else resolve({ success: true, earned, balance: newRow.balance });
+                    }
+                  );
+                }
+              }
+            }
+          );
+        }
+      );
+    });
+  }
+
+  async collectRoleIncome(userId, amount) {
+    if (!this.casinoEnabled) {
+      throw new Error('Casino features are disabled');
+    }
+
+    return new Promise((resolve, reject) => {
+      const db = this.db;
+      const timeout = setTimeout(() => {
+        reject(new Error('Database query timed out'));
+      }, 3000);
+
+      db.get(
+        'SELECT lastRoleCollect FROM casino_balances WHERE discordId = ?',
+        [userId],
+        (err, row) => {
+          clearTimeout(timeout);
+          if (err) {
+            reject(err);
+            return;
+          }
+
+          const now = new Date();
+          const lastCollect = row?.lastRoleCollect ? new Date(row.lastRoleCollect) : null;
+          const canCollect = !lastCollect || (now - lastCollect) >= 24 * 60 * 60 * 1000; // 24 hours
+
+          if (!canCollect) {
+            resolve({ success: false });
+            return;
+          }
+
+          db.run(
+            `UPDATE casino_balances 
+             SET balance = balance + ?,
+                 lastRoleCollect = CURRENT_TIMESTAMP,
+                 updatedAt = CURRENT_TIMESTAMP
+             WHERE discordId = ?`,
+            [amount, userId],
+            function(updateErr) {
+              if (updateErr) {
+                reject(updateErr);
+              } else {
+                if (this.changes === 0) {
+                  // Create user
+                  db.run(
+                    'INSERT INTO casino_balances (discordId, balance, lastRoleCollect) VALUES (?, ?, CURRENT_TIMESTAMP)',
+                    [userId, 1000 + amount],
+                    (insertErr) => {
+                      if (insertErr) reject(insertErr);
+                      else {
+                        db.get(
+                          'SELECT balance FROM casino_balances WHERE discordId = ?',
+                          [userId],
+                          (getErr, newRow) => {
+                            if (getErr) reject(getErr);
+                            else resolve({ success: true, balance: newRow.balance });
+                          }
+                        );
+                      }
+                    }
+                  );
+                } else {
+                  db.get(
+                    'SELECT balance FROM casino_balances WHERE discordId = ?',
+                    [userId],
+                    (getErr, newRow) => {
+                      if (getErr) reject(getErr);
+                      else resolve({ success: true, balance: newRow.balance });
+                    }
+                  );
+                }
+              }
+            }
+          );
+        }
+      );
+    });
+  }
+
+  async slut(userId) {
+    if (!this.casinoEnabled) {
+      throw new Error('Casino features are disabled');
+    }
+
+    return new Promise((resolve, reject) => {
+      const db = this.db;
+      const timeout = setTimeout(() => {
+        reject(new Error('Database query timed out'));
+      }, 3000);
+
+      db.get(
+        'SELECT lastSlut FROM casino_balances WHERE discordId = ?',
+        [userId],
+        (err, row) => {
+          clearTimeout(timeout);
+          if (err) {
+            reject(err);
+            return;
+          }
+
+          const now = new Date();
+          const lastSlut = row?.lastSlut ? new Date(row.lastSlut) : null;
+          const cooldownMs = 30 * 60 * 1000; // 30 minutes
+          const canSlut = !lastSlut || (now - lastSlut) >= cooldownMs;
+
+          if (!canSlut) {
+            const minutesLeft = Math.ceil((cooldownMs - (now - lastSlut)) / (60 * 1000));
+            resolve({ success: false, minutesLeft });
+            return;
+          }
+
+          const earned = 75 + Math.floor(Math.random() * 75); // 75-150 coins
+
+          db.run(
+            `UPDATE casino_balances 
+             SET balance = balance + ?,
+                 lastSlut = CURRENT_TIMESTAMP,
+                 updatedAt = CURRENT_TIMESTAMP
+             WHERE discordId = ?`,
+            [earned, userId],
+            function(updateErr) {
+              if (updateErr) {
+                reject(updateErr);
+              } else {
+                if (this.changes === 0) {
+                  // Create user
+                  db.run(
+                    'INSERT INTO casino_balances (discordId, balance, lastSlut) VALUES (?, ?, CURRENT_TIMESTAMP)',
+                    [userId, 1000 + earned],
+                    (insertErr) => {
+                      if (insertErr) reject(insertErr);
+                      else {
+                        db.get(
+                          'SELECT balance FROM casino_balances WHERE discordId = ?',
+                          [userId],
+                          (getErr, newRow) => {
+                            if (getErr) reject(getErr);
+                            else resolve({ success: true, earned, balance: newRow.balance });
+                          }
+                        );
+                      }
+                    }
+                  );
+                } else {
+                  db.get(
+                    'SELECT balance FROM casino_balances WHERE discordId = ?',
+                    [userId],
+                    (getErr, newRow) => {
+                      if (getErr) reject(getErr);
+                      else resolve({ success: true, earned, balance: newRow.balance });
                     }
                   );
                 }
