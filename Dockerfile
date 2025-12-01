@@ -1,36 +1,19 @@
-# Dockerfile for Railway
-# Builds frontend, then copies backend files and starts the server
-
-FROM node:18 AS frontend-builder
-
-WORKDIR /frontend-build
-
-# Build frontend
-COPY frontend/package*.json ./
-RUN npm install
-COPY frontend/ ./
-RUN npm run build
-
-# Backend stage
-FROM node:18
+FROM node:18-alpine
 
 WORKDIR /app
 
 # Copy backend package files
-COPY backend/package*.json ./
+COPY backend/package.json ./
 
-# Install backend dependencies
-RUN npm ci --only=production
+# Install dependencies (use npm install, not npm ci)
+RUN npm install --omit=dev
 
 # Copy backend files
 COPY backend/ ./
 
-# Copy built frontend from builder stage
-COPY --from=frontend-builder /frontend-build/dist ./dist
+# Expose port
+EXPOSE 8080
 
-# Expose port (Railway will set PORT automatically)
-EXPOSE 3000
-
-# Start the server
-CMD ["node", "server.js"]
+# Start server
+CMD ["npm", "start"]
 
