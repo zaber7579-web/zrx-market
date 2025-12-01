@@ -114,6 +114,7 @@ function initDatabase() {
           notes TEXT,
           robloxUsername TEXT,
           status TEXT DEFAULT 'active',
+          isCrossTrade INTEGER DEFAULT 0,
           createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
           FOREIGN KEY (creatorId) REFERENCES users(discordId)
         )`, (err) => {
@@ -121,6 +122,14 @@ function initDatabase() {
             console.error('❌ Error creating trades table:', err.message);
             hasError = true;
             errors.push({ table: 'trades', error: err });
+          } else {
+            // Add missing columns if table already exists (migration)
+            db.run(`ALTER TABLE trades ADD COLUMN isCrossTrade INTEGER DEFAULT 0`, (alterErr) => {
+              // Ignore error if column already exists
+              if (alterErr && !alterErr.message.includes('duplicate column')) {
+                console.warn('⚠️  Could not add isCrossTrade column (may already exist):', alterErr.message);
+              }
+            });
           }
         });
 
@@ -205,6 +214,7 @@ function initDatabase() {
           senderId TEXT NOT NULL,
           recipientId TEXT NOT NULL,
           content TEXT NOT NULL,
+          isRead INTEGER DEFAULT 0,
           createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
           FOREIGN KEY (tradeId) REFERENCES trades(id),
           FOREIGN KEY (senderId) REFERENCES users(discordId),
@@ -214,6 +224,14 @@ function initDatabase() {
             console.error('❌ Error creating messages table:', err.message);
             hasError = true;
             errors.push({ table: 'messages', error: err });
+          } else {
+            // Add missing columns if table already exists (migration)
+            db.run(`ALTER TABLE messages ADD COLUMN isRead INTEGER DEFAULT 0`, (alterErr) => {
+              // Ignore error if column already exists
+              if (alterErr && !alterErr.message.includes('duplicate column')) {
+                console.warn('⚠️  Could not add isRead column (may already exist):', alterErr.message);
+              }
+            });
           }
         });
 
