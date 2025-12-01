@@ -94,11 +94,11 @@ const Trades = () => {
                 </div>
                 <div className="trade-content">
                   <div className="trade-section">
-                    <strong>Offered:</strong> {trade.offered}
+                    <strong>Offered:</strong> {Array.isArray(trade.offered) ? trade.offered.map(i => i?.name || i).join(', ') : (trade.offered || 'N/A')}
                   </div>
 
                   <div className="trade-section">
-                    <strong>Wanted:</strong> {trade.wanted}
+                    <strong>Wanted:</strong> {Array.isArray(trade.wanted) ? trade.wanted.map(i => i?.name || i).join(', ') : (trade.wanted || 'N/A')}
                   </div>
                   {trade.value && (
                     <div className="trade-section">
