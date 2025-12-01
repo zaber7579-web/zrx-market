@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 
 const AuthContext = createContext();
@@ -14,36 +14,23 @@ export const useAuth = () => {
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [messageOverlayOpen, setMessageOverlayOpen] = useState(false);
+  const [messageRecipient, setMessageRecipient] = useState(null);
+  const [messageTradeId, setMessageTradeId] = useState(null);
+  const [messageReportId, setMessageReportId] = useState(null);
+  const [isBridged, setIsBridged] = useState(false);
+  const messageOverlayRef = useRef(null);
+  const [toasts, setToasts] = useState([]);
 
   useEffect(() => {
     checkAuth();
-    
-    // Also check auth when window regains focus (after Discord redirect)
-    const handleFocus = () => {
-      if (!user && !loading) {
-        checkAuth();
-      }
-    };
-    window.addEventListener('focus', handleFocus);
-    
-    return () => window.removeEventListener('focus', handleFocus);
   }, []);
 
   const checkAuth = async () => {
     try {
-      setLoading(true);
-      const response = await axios.get('/auth/me', {
-        withCredentials: true,
-        timeout: 10000
-      });
-      
-      if (response.data && response.data.user) {
-        setUser(response.data.user);
-      } else {
-        setUser(null);
-      }
+      const response = await axios.get('/auth/me');
+      setUser(response.data.user);
     } catch (error) {
-      console.error('Auth check error:', error);
       setUser(null);
     } finally {
       setLoading(false);
@@ -65,20 +52,49 @@ export const AuthProvider = ({ children }) => {
   };
 
   const isModerator = () => {
-    if (!user || !user.roles) return false;
-    try {
-      const roles = typeof user.roles === 'string' ? JSON.parse(user.roles) : user.roles;
-      // Get moderator role ID from environment or use default
-      const moderatorRoleId = import.meta.env.VITE_MODERATOR_ROLE_ID || '1391972977586864218';
-      return Array.isArray(roles) && roles.includes(moderatorRoleId);
-    } catch (error) {
-      console.error('Error parsing roles:', error);
-      return false;
+    if (!user) return false;
+    
+    if (user.isOwner) {
+      return true;
     }
+    
+    if (user.roles) {
+      const roles = typeof user.roles === 'string' ? JSON.parse(user.roles) : user.roles;
+      const moderatorRoleId = import.meta.env.VITE_MODERATOR_ROLE_ID || '1391972977586864218';
+      return roles.includes(moderatorRoleId);
+    }
+    
+    return false;
   };
 
   const isVerified = () => {
     return user && user.verified === 1;
+  };
+
+  const openMessageOverlay = (recipient = null, tradeId = null, reportId = null, bridged = false) => {
+    setMessageRecipient(recipient);
+    setMessageTradeId(tradeId);
+    setMessageReportId(reportId);
+    setIsBridged(bridged);
+    setMessageOverlayOpen(true);
+  };
+
+  const closeMessageOverlay = () => {
+    setMessageOverlayOpen(false);
+    setMessageRecipient(null);
+    setMessageTradeId(null);
+    setMessageReportId(null);
+    setIsBridged(false);
+  };
+
+  const showToast = (message, type = 'info', duration = 4000) => {
+    const id = Date.now() + Math.random();
+    setToasts(prev => [...prev, { id, message, type, duration }]);
+    return id;
+  };
+
+  const removeToast = (id) => {
+    setToasts(prev => prev.filter(toast => toast.id !== id));
   };
 
   return (
@@ -90,7 +106,18 @@ export const AuthProvider = ({ children }) => {
         logout,
         checkAuth,
         isModerator,
-        isVerified
+        isVerified,
+        messageOverlayOpen,
+        messageRecipient,
+        messageTradeId,
+        messageReportId,
+        isBridged,
+        openMessageOverlay,
+        closeMessageOverlay,
+        messageOverlayRef,
+        showToast,
+        removeToast,
+        toasts,
       }}
     >
       {children}
