@@ -106,7 +106,20 @@ app.use('/api/global-chat', globalChatRoutes);
 
 // Serve static files from React build (in production)
 if (process.env.NODE_ENV === 'production') {
-  app.use(express.static(path.join(__dirname, '../frontend/dist')));
+  // Try multiple possible locations for frontend build
+  const frontendPaths = [
+    path.join(__dirname, '../frontend/dist'),
+    path.join(__dirname, './dist'),
+    path.join(__dirname, '../dist')
+  ];
+  
+  for (const frontendPath of frontendPaths) {
+    if (fs.existsSync(frontendPath)) {
+      app.use(express.static(frontendPath));
+      console.log(`✅ Serving frontend from: ${frontendPath}`);
+      break;
+    }
+  }
 }
 
 // Root route
