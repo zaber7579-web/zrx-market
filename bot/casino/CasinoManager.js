@@ -6,39 +6,54 @@ class CasinoManager {
   constructor(db) {
     this.db = db;
     this.activeGames = new Map(); // Store active game sessions
-    this.initializeDatabase();
+    this.casinoEnabled = true;
+    // Initialize database asynchronously, don't block constructor
+    this.initializeDatabase().catch((err) => {
+      console.error('Failed to initialize casino database:', err.message);
+      console.warn('⚠️  Casino features will be disabled');
+      this.casinoEnabled = false;
+    });
   }
 
   async initializeDatabase() {
     return new Promise((resolve, reject) => {
       // Use a timeout to prevent hanging if database is locked
       const timeout = setTimeout(() => {
-        reject(new Error('Database initialization timeout'));
+        console.warn('⚠️  Casino database initialization timeout');
+        resolve(); // Resolve instead of reject
       }, 5000);
 
-      this.db.run(`
-        CREATE TABLE IF NOT EXISTS casino_balances (
-          discordId TEXT PRIMARY KEY,
-          balance INTEGER DEFAULT 1000,
-          totalWon INTEGER DEFAULT 0,
-          totalLost INTEGER DEFAULT 0,
-          gamesPlayed INTEGER DEFAULT 0,
-          lastDaily TEXT,
-          createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
-          updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP
-        )
-      `, (err) => {
+      try {
+        this.db.run(`
+          CREATE TABLE IF NOT EXISTS casino_balances (
+            discordId TEXT PRIMARY KEY,
+            balance INTEGER DEFAULT 1000,
+            totalWon INTEGER DEFAULT 0,
+            totalLost INTEGER DEFAULT 0,
+            gamesPlayed INTEGER DEFAULT 0,
+            lastDaily TEXT,
+            createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP
+          )
+        `, (err) => {
+          clearTimeout(timeout);
+          if (err) {
+            console.error('Error creating casino_balances table:', err.message);
+            // Don't reject - allow bot to continue without casino features
+            console.warn('⚠️  Casino features will be disabled due to database error');
+            this.casinoEnabled = false;
+            resolve(); // Resolve instead of reject to prevent bot crash
+          } else {
+            console.log('✅ Casino database initialized');
+            resolve();
+          }
+        });
+      } catch (syncErr) {
         clearTimeout(timeout);
-        if (err) {
-          console.error('Error creating casino_balances table:', err);
-          // Don't reject - allow bot to continue without casino features
-          console.warn('⚠️  Casino features will be disabled due to database error');
-          resolve(); // Resolve instead of reject to prevent bot crash
-        } else {
-          console.log('✅ Casino database initialized');
-          resolve();
-        }
-      });
+        console.error('Synchronous error in casino database init:', syncErr.message);
+        this.casinoEnabled = false;
+        resolve(); // Resolve to prevent crash
+      }
     });
   }
 
