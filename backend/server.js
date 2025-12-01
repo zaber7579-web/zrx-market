@@ -34,6 +34,9 @@ const globalChatRoutes = require('./routes/global-chat');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Trust proxy for Railway/reverse proxy setups
+app.set('trust proxy', true);
+
 // Middleware
 app.use(helmet({
   contentSecurityPolicy: false, // Adjust for production
@@ -105,20 +108,26 @@ app.use('/api/smart-alerts', smartAlertsRoutes);
 app.use('/api/global-chat', globalChatRoutes);
 
 // Serve static files from React build (in production)
+let frontendDistPath = null;
 if (process.env.NODE_ENV === 'production') {
   // Try multiple possible locations for frontend build
   const frontendPaths = [
-    path.join(__dirname, '../frontend/dist'),
-    path.join(__dirname, './dist'),
-    path.join(__dirname, '../dist')
+    path.join(__dirname, './dist'),           // /app/dist (Railway with Dockerfile)
+    path.join(__dirname, '../dist'),          // /dist (alternative)
+    path.join(__dirname, '../frontend/dist')  // ../frontend/dist (dev/local)
   ];
   
   for (const frontendPath of frontendPaths) {
     if (fs.existsSync(frontendPath)) {
       app.use(express.static(frontendPath));
+      frontendDistPath = frontendPath;
       console.log(`✅ Serving frontend from: ${frontendPath}`);
       break;
     }
+  }
+  
+  if (!frontendDistPath) {
+    console.warn('⚠️  Frontend build not found. Tried:', frontendPaths.map(p => path.resolve(p)));
   }
 }
 
@@ -149,7 +158,34 @@ if (process.env.NODE_ENV === 'production') {
     if (req.path.startsWith('/api/') || req.path.startsWith('/auth/')) {
       return res.status(404).json({ error: 'Not found' });
     }
-    res.sendFile(path.join(__dirname, '../frontend/dist/index.html'));
+    
+    // Use the same path that was found for static files
+    if (frontendDistPath) {
+      res.sendFile(path.join(frontendDistPath, 'index.html'));
+    } else {
+      // Fallback: try all possible paths
+      const fallbackPaths = [
+        path.join(__dirname, './dist/index.html'),
+        path.join(__dirname, '../dist/index.html'),
+        path.join(__dirname, '../frontend/dist/index.html')
+      ];
+      
+      let found = false;
+      for (const indexPath of fallbackPaths) {
+        if (fs.existsSync(indexPath)) {
+          res.sendFile(indexPath);
+          found = true;
+          break;
+        }
+      }
+      
+      if (!found) {
+        res.status(500).json({ 
+          error: 'Frontend not found',
+          message: 'Frontend build files are missing. Please rebuild the frontend.'
+        });
+      }
+    }
   });
 }
 
