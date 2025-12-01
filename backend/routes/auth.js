@@ -16,8 +16,22 @@ router.get(
   '/discord/callback',
   authLimiter,
   (req, res, next) => {
-    // Frontend URL - default to common Vite dev server port
-    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+    // Frontend URL - prefer FRONTEND_URL, then BASE_URL, then default
+    let frontendUrl = process.env.FRONTEND_URL;
+    if (!frontendUrl) {
+      frontendUrl = process.env.BASE_URL;
+    }
+    if (!frontendUrl && process.env.NODE_ENV === 'production') {
+      // In production, try to infer from request
+      frontendUrl = `${req.protocol}://${req.get('host')}`;
+    }
+    if (!frontendUrl) {
+      frontendUrl = 'http://localhost:5173';
+    }
+    
+    console.log('🔍 Frontend redirect URL:', frontendUrl);
+    console.log('🔍 FRONTEND_URL env:', process.env.FRONTEND_URL);
+    console.log('🔍 BASE_URL env:', process.env.BASE_URL);
     
     if (!process.env.DISCORD_CLIENT_ID || !process.env.DISCORD_CLIENT_SECRET) {
       return res.redirect(`${frontendUrl}/?error=oauth_not_configured`);
