@@ -136,6 +136,9 @@ function initDatabase() {
           robloxUsername TEXT,
           status TEXT DEFAULT 'pending',
           middlemanId TEXT,
+          threadId TEXT,
+          user1Accepted INTEGER DEFAULT 0,
+          user2Accepted INTEGER DEFAULT 0,
           createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
           FOREIGN KEY (requesterId) REFERENCES users(discordId)
         )`, (err) => {
@@ -143,6 +146,24 @@ function initDatabase() {
             console.error('❌ Error creating middleman table:', err.message);
             hasError = true;
             errors.push({ table: 'middleman', error: err });
+          } else {
+            // Add missing columns if table already exists (migration)
+            db.run(`ALTER TABLE middleman ADD COLUMN threadId TEXT`, (alterErr) => {
+              // Ignore error if column already exists
+              if (alterErr && !alterErr.message.includes('duplicate column')) {
+                console.warn('⚠️  Could not add threadId column (may already exist):', alterErr.message);
+              }
+            });
+            db.run(`ALTER TABLE middleman ADD COLUMN user1Accepted INTEGER DEFAULT 0`, (alterErr) => {
+              if (alterErr && !alterErr.message.includes('duplicate column')) {
+                console.warn('⚠️  Could not add user1Accepted column (may already exist):', alterErr.message);
+              }
+            });
+            db.run(`ALTER TABLE middleman ADD COLUMN user2Accepted INTEGER DEFAULT 0`, (alterErr) => {
+              if (alterErr && !alterErr.message.includes('duplicate column')) {
+                console.warn('⚠️  Could not add user2Accepted column (may already exist):', alterErr.message);
+              }
+            });
           }
         });
 
