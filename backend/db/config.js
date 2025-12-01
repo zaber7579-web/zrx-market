@@ -90,42 +90,101 @@ function runMigrations() {
       }
     });
 
+    // Track when individual migration tasks finish
+    let pendingTasks = 0;
+    let resolved = false;
+
+    const done = () => {
+      if (!resolved && pendingTasks === 0) {
+        if (migrationsRun > 0) {
+          console.log(`✅ Migrations complete: ${migrationsSucceeded}/${migrationsRun} succeeded`);
+        }
+        resolved = true;
+        resolve();
+      }
+    };
+
+    const scheduleTask = () => {
+      migrationsRun++;
+      pendingTasks++;
+    };
+
+    const finishTask = (success) => {
+      if (success) migrationsSucceeded++;
+      pendingTasks--;
+      done();
+    };
+
     // Check and add isRead to messages
     db.all(`PRAGMA table_info(messages)`, [], (err, columns) => {
       if (!err && columns) {
         const hasColumn = columns.some(col => col.name === 'isRead');
         if (!hasColumn) {
-          migrationsRun++;
+          scheduleTask();
           db.run(`ALTER TABLE messages ADD COLUMN isRead INTEGER DEFAULT 0`, (alterErr) => {
             if (!alterErr) {
               console.log('✅ Added isRead column to messages');
-              migrationsSucceeded++;
+              finishTask(true);
             } else {
               console.error('❌ Failed to add isRead:', alterErr.message);
+              finishTask(false);
             }
-            checkComplete();
           });
         } else {
-          checkComplete();
+          done();
         }
       } else {
-        checkComplete();
+        done();
       }
     });
 
-    function checkComplete() {
-      if (migrationsRun === 0 || migrationsSucceeded === migrationsRun) {
-        if (migrationsRun > 0) {
-          console.log(`✅ Migrations complete: ${migrationsSucceeded}/${migrationsRun} succeeded`);
-        }
-        resolve();
+    // Ensure global_chat_messages table exists on legacy DBs
+    scheduleTask();
+    db.run(`CREATE TABLE IF NOT EXISTS global_chat_messages (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      userId TEXT NOT NULL,
+      username TEXT NOT NULL,
+      avatar TEXT,
+      content TEXT NOT NULL,
+      isFiltered INTEGER DEFAULT 0,
+      createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (userId) REFERENCES users(discordId)
+    )`, (err) => {
+      if (err) {
+        console.error('❌ Migration error creating global_chat_messages table:', err.message);
+        finishTask(false);
+      } else {
+        console.log('✅ Ensured global_chat_messages table exists');
+        finishTask(true);
       }
-    }
+    });
+
+    // Ensure bridge_sessions table exists on legacy DBs
+    scheduleTask();
+    db.run(`CREATE TABLE IF NOT EXISTS bridge_sessions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      reportId INTEGER NOT NULL,
+      threadId TEXT,
+      accusedDiscordId TEXT,
+      moderatorDiscordId TEXT,
+      webhookUrl TEXT,
+      createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (reportId) REFERENCES reports(id)
+    )`, (err) => {
+      if (err) {
+        console.error('❌ Migration error creating bridge_sessions table:', err.message);
+        finishTask(false);
+      } else {
+        console.log('✅ Ensured bridge_sessions table exists');
+        finishTask(true);
+      }
+    });
 
     // Timeout after 5 seconds
     setTimeout(() => {
-      if (migrationsRun === 0) {
+      if (!resolved && pendingTasks === 0) {
         console.log('⚠️  No migrations needed or tables do not exist yet');
+        resolved = true;
         resolve();
       }
     }, 5000);
