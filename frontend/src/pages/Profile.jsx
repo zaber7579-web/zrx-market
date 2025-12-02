@@ -29,17 +29,24 @@ const Profile = () => {
     setLoading(true);
     setError(null);
     try {
-      const [profileRes, reviewsRes] = await Promise.all([
+      const [profileRes, reviewsData] = await Promise.all([
         axios.get(`/api/profiles/${discordId}`).catch(err => {
           if (err.response?.status === 404) {
             throw new Error('User not found');
           }
           throw err;
         }),
-        axios.get(`/api/reviews/user/${discordId}`).catch(() => []) // Reviews are optional
+        axios
+          .get(`/api/reviews/user/${discordId}`)
+          .then(res => res.data)
+          .catch(() => [])
       ]);
-      setProfile(profileRes.data);
-      setReviews(Array.isArray(reviewsRes.data) ? reviewsRes.data : []);
+      const profileData = profileRes.data;
+      if (!profileData || typeof profileData !== 'object') {
+        throw new Error('Invalid profile data received');
+      }
+      setProfile(profileData);
+      setReviews(Array.isArray(reviewsData) ? reviewsData : []);
     } catch (error) {
       console.error('Error fetching profile:', error);
       const errorMessage = error.response?.data?.error || error.message || 'Failed to load profile';
@@ -67,37 +74,43 @@ const Profile = () => {
     );
   }
 
+  const displayName = profile.username || profile.discordTag || 'Unknown User';
+  const profileInitial = displayName?.trim()?.charAt(0)?.toUpperCase() || '?';
+  const avatarUrl = typeof profile.avatar === 'string' && profile.avatar.trim() ? profile.avatar : null;
+  const recentTrades = Array.isArray(profile.recentTrades) ? profile.recentTrades : [];
+  const recentReviews = Array.isArray(profile.recentReviews) ? profile.recentReviews : [];
+  const stats = (profile.stats && typeof profile.stats === 'object') ? profile.stats : {};
   const isOwnProfile = currentUser && currentUser.discordId === discordId;
 
   return (
     <div className="profile">
       <div className="profile-header">
         <div className="profile-avatar">
-          {profile.avatar ? (
-            <img src={profile.avatar} alt={profile.username} />
+          {avatarUrl ? (
+            <img src={avatarUrl} alt={displayName} />
           ) : (
-            <div className="avatar-placeholder">{profile.username[0]}</div>
+            <div className="avatar-placeholder">{profileInitial}</div>
           )}
         </div>
         <div className="profile-info">
-          <h1>{profile.username}</h1>
+          <h1>{displayName}</h1>
           {profile.verified === 1 && <span className="verified-badge">✓ Verified</span>}
           {profile.bio && <p className="profile-bio">{profile.bio}</p>}
         </div>
         <div className="profile-stats">
           <div className="stat-box">
-            <div className="stat-value">{profile.stats?.totalTrades || 0}</div>
+            <div className="stat-value">{stats.totalTrades || 0}</div>
             <div className="stat-label">Total Trades</div>
           </div>
           <div className="stat-box">
-            <div className="stat-value">{profile.stats?.completedTrades || 0}</div>
+            <div className="stat-value">{stats.completedTrades || 0}</div>
             <div className="stat-label">Completed</div>
           </div>
           <div className="stat-box">
             <div className="stat-value">
-              {profile.stats?.averageRating?.toFixed(1) || 'N/A'}
+              {typeof stats.averageRating === 'number' ? stats.averageRating.toFixed(1) : 'N/A'}
               <span className="rating-stars">
-                {'⭐'.repeat(Math.round(profile.stats?.averageRating || 0))}
+                {'⭐'.repeat(Math.round(stats.averageRating || 0))}
               </span>
             </div>
             <div className="stat-label">Rating</div>
@@ -131,9 +144,9 @@ const Profile = () => {
           <div className="overview-tab">
             <div className="overview-section">
               <h2>Recent Trades</h2>
-              {profile.recentTrades?.length > 0 ? (
+              {recentTrades.length > 0 ? (
                 <div className="trades-grid">
-                  {profile.recentTrades.map(trade => (
+                  {recentTrades.map(trade => (
                     <Link key={trade.id} to="/trades" className="trade-card-link">
                       <div className="trade-card-mini">
                         <div className="trade-card-header">
@@ -159,9 +172,9 @@ const Profile = () => {
 
             <div className="overview-section">
               <h2>Recent Reviews</h2>
-              {profile.recentReviews?.length > 0 ? (
+              {recentReviews.length > 0 ? (
                 <div className="reviews-list">
-                  {profile.recentReviews.map(review => (
+                  {recentReviews.map(review => (
                     <div key={review.id} className="review-card">
                       <div className="review-header">
                         <div className="reviewer-info">
@@ -196,7 +209,7 @@ const Profile = () => {
               <button
                 onClick={() => {
                   // Find a completed trade with this user to review
-                  const completedTrade = profile.recentTrades?.find(t => t.status === 'completed');
+                  const completedTrade = recentTrades.find(t => t.status === 'completed');
                   if (completedTrade) {
                     setReviewTradeId(completedTrade.id);
                     setShowReviewForm(true);
@@ -238,7 +251,7 @@ const Profile = () => {
         <ReviewForm
           tradeId={reviewTradeId}
           revieweeId={discordId}
-          revieweeUsername={profile.username}
+          revieweeUsername={displayName}
           onClose={() => {
             setShowReviewForm(false);
             setReviewTradeId(null);
@@ -268,10 +281,17 @@ const TradesList = ({ userId }) => {
     setLoading(true);
     try {
       const response = await axios.get(`/api/profiles/${userId}/trades?page=${page}`);
-      setTrades(response.data.trades);
-      setTotalPages(response.data.pagination.totalPages);
+      const tradesData = response.data?.trades;
+      const pagination = response.data?.pagination;
+      setTrades(Array.isArray(tradesData) ? tradesData : []);
+      setTotalPages(
+        typeof pagination?.totalPages === 'number' && pagination.totalPages > 0
+          ? pagination.totalPages
+          : 1
+      );
     } catch (error) {
       console.error('Error fetching trades:', error);
+      setTrades([]);
     } finally {
       setLoading(false);
     }
