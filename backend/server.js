@@ -21,6 +21,12 @@ const messagesRoutes = require('./routes/messages');
 const userRoutes = require('./routes/users');
 const globalChatRoutes = require('./routes/global-chat');
 const smartAlertsRoutes = require('./routes/smart-alerts');
+const profilesRoutes = require('./routes/profiles');
+const reviewsRoutes = require('./routes/reviews');
+const notificationsRoutes = require('./routes/notifications');
+const offersRoutes = require('./routes/offers');
+const wishlistRoutes = require('./routes/wishlist');
+const brainrotRoutes = require('./routes/brainrot-values');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -118,6 +124,12 @@ app.use('/api/messages', messagesRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/global-chat', globalChatRoutes);
 app.use('/api/smart-alerts', smartAlertsRoutes);
+app.use('/api/profiles', profilesRoutes);
+app.use('/api/reviews', reviewsRoutes);
+app.use('/api/notifications', notificationsRoutes);
+app.use('/api/offers', offersRoutes);
+app.use('/api/wishlist', wishlistRoutes);
+app.use('/api/brainrot', brainrotRoutes);
 
 // Health check (before static files)
 app.get('/health', (req, res) => {
