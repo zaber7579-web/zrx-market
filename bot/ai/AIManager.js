@@ -59,6 +59,9 @@ class AIManager {
     this.llm = null;
     this.lastMessageTime = new Map(); // Track last message time per channel
     this.proactiveIntervals = new Map(); // Track intervals per channel
+    this.rateLimitQueue = []; // Queue for rate-limited requests
+    this.lastRequestTime = 0; // Track last API request time
+    this.minRequestInterval = 100; // Minimum 100ms between requests
     this.initializeLLM();
   }
 
@@ -79,13 +82,19 @@ class AIManager {
         cache: true,
         temperature: 0.95, // Higher temperature for more creativity and variety
         model: 'llama-3.1-8b-instant',
-        maxTokens: 120, // Very short responses for realistic texting and faster processing
+        maxTokens: 80, // Very short responses to reduce token usage
         onFailedAttempt: (error) => {
+          // Handle rate limits gracefully
+          if (error.status === 429) {
+            const retryAfter = error.headers?.['retry-after'] || error.error?.retry_after || 20;
+            console.warn(`⚠️  Rate limited. Waiting ${retryAfter}s...`);
+            return `Rate limited. Wait ${retryAfter}s`;
+          }
           console.error('Groq API error:', error);
           return 'Request failed! try again later';
         },
-        maxConcurrency: 5,
-        maxRetries: 5,
+        maxConcurrency: 2, // Reduce concurrency to avoid rate limits
+        maxRetries: 3, // Reduce retries
       });
       console.log('✅ AI Manager initialized with Groq');
     } catch (error) {
@@ -235,10 +244,10 @@ class AIManager {
         this.escapeTemplateString(content)
       ]);
 
-      // Add channel context if available with user awareness
+      // Add channel context if available with user awareness (simplified to save tokens)
       let fullMessage = message;
       if (channelContext) {
-        fullMessage = `[Recent Channel Context - Multiple Users Talking]:\n${channelContext}\n\n[Current Message from ${author.username || author.user?.username}]: ${message}\n\n[Important: Pay attention to ALL users in the conversation. If someone is talking shit, be aware of who said what. Track multiple people at once.]`;
+        fullMessage = `[Context]:\n${channelContext}\n[From ${author.username || author.user?.username}]: ${message}`;
       }
 
       const escapedMessage = this.escapeTemplateString(fullMessage);
@@ -253,12 +262,20 @@ class AIManager {
 
       const prompt = ChatPromptTemplate.fromMessages(promptMessages);
       
-      // Set timeout for response (10 seconds max)
+      // Rate limit throttling - wait if needed
+      const now = Date.now();
+      const timeSinceLastRequest = now - this.lastRequestTime;
+      if (timeSinceLastRequest < this.minRequestInterval) {
+        await new Promise(resolve => setTimeout(resolve, this.minRequestInterval - timeSinceLastRequest));
+      }
+      
+      // Set timeout for response (20 seconds max - increased for slower responses)
       const responsePromise = prompt.pipe(this.llm).invoke({});
       const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Request timeout')), 10000)
+        setTimeout(() => reject(new Error('Request timeout')), 20000)
       );
       
+      this.lastRequestTime = Date.now();
       const response = await Promise.race([responsePromise, timeoutPromise]);
       
       this.userConcurrency.delete(userId);
@@ -274,6 +291,16 @@ class AIManager {
     } catch (error) {
       console.error('AI Response error:', error);
       this.userConcurrency.delete(userId);
+      
+      // Handle rate limits specifically
+      if (error.status === 429 || error.message?.includes('rate limit') || error.message?.includes('429')) {
+        const retryAfter = error.headers?.['retry-after'] || error.error?.retry_after || 20;
+        return {
+          send: null,
+          error: `Rate limited. Try again in ${retryAfter}s`,
+        };
+      }
+      
       return {
         send: null,
         error: error.message || 'Unable to generate response',
@@ -301,21 +328,21 @@ class AIManager {
     try {
       let cleanContent = message.cleanContent || message.content;
 
-      // Get recent channel messages for context (last 15-20 messages for better awareness)
+      // Get recent channel messages for context (reduced to save tokens)
       let channelContext = '';
       let userContext = {}; // Track what each user has said
       try {
-        const recentMessages = await message.channel.messages.fetch({ limit: 20 });
+        const recentMessages = await message.channel.messages.fetch({ limit: 12 });
         const contextMessages = Array.from(recentMessages.values())
           .filter(msg => !msg.author.bot || msg.author.id === this.client?.user?.id)
-          .slice(0, 15)
+          .slice(0, 8) // Reduced from 15 to 8 to save tokens
           .reverse();
         
-        // Build context with user tracking
+        // Build context with user tracking (truncate long messages)
         const contextLines = [];
         for (const msg of contextMessages) {
           const author = msg.author.bot && msg.author.id === this.client?.user?.id ? 'ZRX AI' : msg.author.username;
-          const content = msg.cleanContent || msg.content;
+          let content = (msg.cleanContent || msg.content).substring(0, 100); // Truncate to 100 chars
           contextLines.push(`${author}: ${content}`);
           
           // Track what each user said
@@ -329,20 +356,18 @@ class AIManager {
               };
             }
             userContext[userId].messages.push(content);
-            if (userContext[userId].messages.length > 5) {
-              userContext[userId].messages.shift(); // Keep last 5 messages per user
+            if (userContext[userId].messages.length > 3) {
+              userContext[userId].messages.shift(); // Keep last 3 messages per user (reduced from 5)
             }
           }
         }
         
         channelContext = contextLines.join('\n');
         
-        // Add user context summary if multiple users
+        // Add user context summary if multiple users (simplified to save tokens)
         if (Object.keys(userContext).length > 1) {
-          const userSummary = Object.entries(userContext)
-            .map(([userId, data]) => `${data.username} (last: ${data.lastMessage.substring(0, 50)})`)
-            .join(', ');
-          channelContext = `[Active Users in Conversation]: ${userSummary}\n\n${channelContext}`;
+          const userSummary = Object.keys(userContext).map(userId => userContext[userId].username).join(', ');
+          channelContext = `[Users: ${userSummary}]\n${channelContext}`;
         }
       } catch (e) {
         console.warn('Could not fetch channel context:', e);
@@ -366,12 +391,15 @@ class AIManager {
       // Show typing indicator (don't wait for it)
       message.channel.sendTyping().catch(() => {});
 
-      // Get AI response with channel context (with timeout)
+      // Get AI response with channel context (with longer timeout)
       const response = await Promise.race([
         this.getAIResponse(cleanContent, history, message.member, channelContext),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('Request timeout')), 8000))
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Request timeout')), 18000)) // Increased to 18s
       ]).catch(err => {
         console.error('AI request error:', err);
+        // Clear concurrency lock on timeout
+        const userId = message.author.id;
+        this.userConcurrency.delete(userId);
         return { send: null, error: 'Request took too long, try again' };
       });
 
