@@ -131,7 +131,13 @@ class MiddlemanBot extends EventEmitter {
 
     // Initialize AI Manager
     const AIManager = require('./ai/AIManager');
-    this.ai = new AIManager(dbHelpers);
+    this.ai = new AIManager(dbHelpers, this.client);
+    
+    // Set client reference after client is ready
+    this.client.once(Events.ClientReady, () => {
+      this.ai.setClient(this.client);
+      this.startAIProactiveMessaging();
+    });
 
     this.setupEventHandlers();
     this.setupCommands();
@@ -147,8 +153,12 @@ class MiddlemanBot extends EventEmitter {
         status: 'online',
       });
 
+      // Set AI client reference
+      this.ai.setClient(this.client);
+
       await this.registerSlashCommands();
       await this.setupPendingThreadTimers();
+      this.startAIProactiveMessaging();
     });
 
     this.client.on(Events.GuildMemberAdd, async (member) => {
@@ -3859,6 +3869,9 @@ class MiddlemanBot extends EventEmitter {
       try {
         await this.ai.setAIChannel(interaction.guild.id, channel.id);
         
+        // Start proactive messaging for this channel
+        this.ai.startProactiveMessaging(channel);
+        
         // Set rate limit on channel
         try {
           await channel.setRateLimitPerUser(10);
@@ -3878,6 +3891,29 @@ class MiddlemanBot extends EventEmitter {
         await interaction.editReply({ content: `❌ ${getSnarkyResponse('error')} ${error.message}` });
       }
     }
+  }
+
+  startAIProactiveMessaging() {
+    // Start proactive messaging for all configured AI channels
+    if (!this.client || !this.ai) return;
+
+    setTimeout(async () => {
+      try {
+        const guilds = this.client.guilds.cache;
+        for (const [guildId, guild] of guilds) {
+          const aiChannelId = await this.ai.getAIChannel(guildId);
+          if (aiChannelId) {
+            const channel = await guild.channels.fetch(aiChannelId).catch(() => null);
+            if (channel) {
+              this.ai.startProactiveMessaging(channel);
+            }
+          }
+        }
+        console.log('✅ Started proactive AI messaging for all configured channels');
+      } catch (error) {
+        console.error('Error starting proactive AI messaging:', error);
+      }
+    }, 10000); // Wait 10 seconds after bot is ready
   }
 
   async login() {

@@ -43,11 +43,18 @@ const AI_CONFIG = {
 };
 
 class AIManager {
-  constructor(db) {
+  constructor(db, client = null) {
     this.db = db;
+    this.client = client;
     this.userConcurrency = new Map(); // Track concurrent requests per user
     this.llm = null;
+    this.lastMessageTime = new Map(); // Track last message time per channel
+    this.proactiveIntervals = new Map(); // Track intervals per channel
     this.initializeLLM();
+  }
+
+  setClient(client) {
+    this.client = client;
   }
 
   initializeLLM() {
@@ -254,6 +261,9 @@ class AIManager {
       return false;
     }
 
+    // Update last message time for proactive messaging
+    this.updateLastMessageTime(message.channel.id);
+
     if (!this.llm) {
       return false;
     }
@@ -309,6 +319,86 @@ class AIManager {
       console.error('Error handling AI message:', error);
       return false;
     }
+  }
+
+  // Proactive messages when channel is quiet
+  getLonelyMessages() {
+    return [
+      "anyone there? it's lonely here",
+      "yo where everyone at?",
+      "damn this place is dead",
+      "anyone alive?",
+      "bro it's quiet as hell in here",
+      "where y'all at?",
+      "this chat dead or what?",
+      "anyone wanna talk or nah?",
+      "yo it's too quiet here",
+      "where the fuck is everyone",
+      "anyone there?",
+      "dead chat fr",
+      "y'all really just left me here",
+      "this is sad, where everyone go?",
+      "anyone? hello?",
+      "bro it's been quiet for a minute",
+      "where the homies at?",
+      "anyone there or am i talking to myself?",
+      "yo chat dead",
+      "anyone alive in here?"
+    ];
+  }
+
+  async sendProactiveMessage(channel) {
+    if (!this.client || !channel) return;
+
+    try {
+      const messages = this.getLonelyMessages();
+      const randomMessage = messages[Math.floor(Math.random() * messages.length)];
+      
+      await channel.send(randomMessage);
+      console.log(`🤖 AI sent proactive message in ${channel.id}: ${randomMessage}`);
+    } catch (error) {
+      console.error('Error sending proactive AI message:', error);
+    }
+  }
+
+  startProactiveMessaging(channel) {
+    if (!channel || this.proactiveIntervals.has(channel.id)) return;
+
+    // Check every 5-10 minutes if channel is quiet
+    const checkInterval = () => {
+      const lastMsgTime = this.lastMessageTime.get(channel.id);
+      const now = Date.now();
+      const quietTime = now - (lastMsgTime || 0);
+
+      // If channel has been quiet for 5-8 minutes, send a message
+      const minQuietTime = 5 * 60 * 1000; // 5 minutes
+      const maxQuietTime = 8 * 60 * 1000; // 8 minutes
+      const randomQuietTime = minQuietTime + Math.random() * (maxQuietTime - minQuietTime);
+
+      if (quietTime >= randomQuietTime && (!lastMsgTime || quietTime >= minQuietTime)) {
+        this.sendProactiveMessage(channel);
+        // Reset timer after sending
+        this.lastMessageTime.set(channel.id, now);
+      }
+    };
+
+    // Check every 30 seconds
+    const interval = setInterval(checkInterval, 30 * 1000);
+    this.proactiveIntervals.set(channel.id, interval);
+    console.log(`✅ Started proactive messaging for channel ${channel.id}`);
+  }
+
+  stopProactiveMessaging(channelId) {
+    const interval = this.proactiveIntervals.get(channelId);
+    if (interval) {
+      clearInterval(interval);
+      this.proactiveIntervals.delete(channelId);
+      console.log(`⏹️  Stopped proactive messaging for channel ${channelId}`);
+    }
+  }
+
+  updateLastMessageTime(channelId) {
+    this.lastMessageTime.set(channelId, Date.now());
   }
 }
 
