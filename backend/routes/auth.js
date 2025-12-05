@@ -77,7 +77,7 @@ router.post('/logout', (req, res) => {
         path: '/'
       });
       
-      res.json({ message: 'Logged out successfully' });
+    res.json({ message: 'Logged out successfully' });
     });
   });
 });
@@ -92,35 +92,35 @@ router.get('/me', async (req, res) => {
     }
     
     // Check if user is authenticated
-    if (req.isAuthenticated && req.isAuthenticated()) {
-      try {
-        // Check if user is blacklisted
-        const { dbHelpers } = require('../db/config');
-        const blacklisted = await dbHelpers.get(
-          'SELECT * FROM blacklist WHERE discordId = ?',
-          [req.user.discordId]
-        );
+  if (req.isAuthenticated && req.isAuthenticated()) {
+    try {
+      // Check if user is blacklisted
+      const { dbHelpers } = require('../db/config');
+      const blacklisted = await dbHelpers.get(
+        'SELECT * FROM blacklist WHERE discordId = ?',
+        [req.user.discordId]
+      );
 
-        if (blacklisted) {
-          req.logout(() => {});
-          return res.json({ user: null, inGuild: false, blacklisted: true });
-        }
-
-        const user = { ...req.user };
-        user.roles = user.roles ? JSON.parse(user.roles) : [];
-        res.json({ user, inGuild: true });
-      } catch (error) {
-        console.error('Error in /me:', error);
-        res.json({ user: null, inGuild: false });
+      if (blacklisted) {
+        req.logout(() => {});
+        return res.json({ user: null, inGuild: false, blacklisted: true });
       }
-    } else {
+
+      const user = { ...req.user };
+      user.roles = user.roles ? JSON.parse(user.roles) : [];
+      res.json({ user, inGuild: true });
+    } catch (error) {
+      console.error('Error in /me:', error);
+      res.json({ user: null, inGuild: false });
+    }
+  } else {
       // User not authenticated - clear any invalid session
       if (req.sessionID) {
         console.log('⚠️  User not authenticated, clearing session:', req.sessionID);
         req.session.destroy(() => {});
       }
-      res.json({ user: null, inGuild: false });
-    }
+    res.json({ user: null, inGuild: false });
+  }
   } catch (error) {
     console.error('Error in /me route:', error);
     res.json({ user: null, inGuild: false, error: true });

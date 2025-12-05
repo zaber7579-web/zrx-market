@@ -436,16 +436,16 @@ const MessageButton = () => {
 
       if (response.data.bothRequested) {
         showToast('✅ Both parties have requested MM! The request has been sent to Discord and will appear on the waitlist.', 'success');
+        // Only set cooldown when both parties have requested
+        if (response.data.cooldownRemaining) {
+          setMmCooldownRemaining(response.data.cooldownRemaining);
+        } else {
+          setMmCooldownRemaining(20 * 60 * 1000);
+        }
       } else {
         showToast('✅ Your MM request has been recorded. Waiting for the other party to also request MM.', 'info');
-      }
-
-      // Update cooldown from response if provided
-      if (response.data.cooldownRemaining) {
-        setMmCooldownRemaining(response.data.cooldownRemaining);
-      } else {
-        // Set 20 minute cooldown
-        setMmCooldownRemaining(20 * 60 * 1000);
+        // Don't set cooldown if only one party requested - they can still request
+        setMmCooldownRemaining(0);
       }
 
       fetchMMRequestStatus(tradeId);

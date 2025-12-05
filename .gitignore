@@ -9,9 +9,4 @@ uploads/
 *.sqlite
 *.sqlite3
 .vite/
-data/
-logs/
-.env.local
-.env.production
-*.local
 

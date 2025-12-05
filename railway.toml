@@ -1,5 +1,0 @@
-# Railway configuration file
-# Railway should use Dockerfile now, but if it uses this:
-[deploy]
-startCommand = "node server.js"
-

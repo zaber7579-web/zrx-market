@@ -35,3 +35,10 @@ Write-Host "`n✅ Setup complete! Run 'npm run dev' to start the application." -
 
 
 
+
+
+
+
+
+
+

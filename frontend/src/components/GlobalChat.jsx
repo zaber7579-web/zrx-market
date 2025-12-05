@@ -3,11 +3,7 @@ import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
 import './GlobalChat.css';
 
-// Calculate navbar height dynamically
-const getNavbarHeight = () => {
-  const navbar = document.querySelector('.navbar');
-  return navbar ? navbar.offsetHeight : 80;
-};
+const isClient = typeof window !== 'undefined';
 
 const GlobalChat = () => {
   const { user, showToast } = useAuth();
@@ -17,11 +13,14 @@ const GlobalChat = () => {
   const messagesEndRef = useRef(null);
   const messageListRef = useRef(null);
   const [isCollapsed, setIsCollapsed] = useState(false);
-  const [navbarHeight, setNavbarHeight] = useState(80);
-  const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
+  const [isMobile, setIsMobile] = useState(() => (isClient ? window.innerWidth <= 768 : false));
 
   useEffect(() => {
     // Check if mobile
+    if (!isClient) {
+      return undefined;
+    }
+
     const checkMobile = () => {
       setIsMobile(window.innerWidth <= 768);
     };
@@ -29,38 +28,8 @@ const GlobalChat = () => {
     checkMobile();
     window.addEventListener('resize', checkMobile);
     
-    // Calculate navbar height after DOM loads (only for desktop)
-    const updateNavbarHeight = () => {
-      if (window.innerWidth > 768) {
-        const height = getNavbarHeight();
-        if (height > 0) {
-          setNavbarHeight(height);
-        }
-      }
-    };
-    
-    // Wait for DOM to be ready
-    if (document.readyState === 'complete') {
-      updateNavbarHeight();
-    } else {
-      window.addEventListener('load', updateNavbarHeight);
-      updateNavbarHeight(); // Also try immediately
-    }
-    
-    window.addEventListener('resize', updateNavbarHeight);
-    
-    // Use MutationObserver to detect navbar changes
-    const observer = new MutationObserver(updateNavbarHeight);
-    const navbar = document.querySelector('.navbar');
-    if (navbar) {
-      observer.observe(navbar, { attributes: true, childList: true, subtree: true });
-    }
-    
     return () => {
       window.removeEventListener('resize', checkMobile);
-      window.removeEventListener('resize', updateNavbarHeight);
-      window.removeEventListener('load', updateNavbarHeight);
-      observer.disconnect();
     };
   }, []);
 
@@ -143,7 +112,6 @@ const GlobalChat = () => {
         className="global-chat-toggle collapsed"
         onClick={() => setIsCollapsed(false)}
         title="Open Global Chat"
-        style={!isMobile ? { top: `${navbarHeight + 10}px` } : {}}
       >
         💬
       </button>
@@ -151,7 +119,7 @@ const GlobalChat = () => {
   }
 
   return (
-    <div className="global-chat" style={!isMobile ? { top: `${navbarHeight}px` } : {}}>
+    <div className="global-chat">
       <div className="global-chat-header">
         <h3>💬 Global Chat</h3>
         <button 

@@ -17,6 +17,26 @@ function safeJSONParse(jsonString) {
   }
 }
 
+function normalizeTraitsList(item) {
+  if (!item) return [];
+  if (Array.isArray(item.traits)) {
+    return item.traits
+      .filter(Boolean)
+      .map(trait => typeof trait === 'string' ? trait.trim() : trait)
+      .filter(Boolean);
+  }
+  if (typeof item.traits === 'string') {
+    return item.traits
+      .split(',')
+      .map(trait => trait.trim())
+      .filter(Boolean);
+  }
+  if (item.trait && typeof item.trait === 'string') {
+    return [item.trait.trim()].filter(Boolean);
+  }
+  return [];
+}
+
 
 // Get all trades with pagination
 router.get('/', async (req, res) => {
@@ -281,25 +301,33 @@ router.post('/', ensureAuth, formLimiter, validateTrade, async (req, res) => {
     // Also preserve value if it exists on the item
     const offeredItems = offered
       .filter(item => item && item.name && item.gameCategory && item.name.trim() && item.gameCategory.trim())
-      .map(item => ({
-        name: item.name.trim(),
-        gameCategory: item.gameCategory.trim(),
-        ...(item.value && { value: item.value }), // Include value if present
-        ...(item.mutation && { mutation: item.mutation }), // Include mutation if present
-        ...(item.trait && { trait: item.trait }), // Include trait if present
-        ...(item.weight && { weight: item.weight }) // Include weight if present
-      }));
+      .map(item => {
+        const traits = normalizeTraitsList(item);
+        return {
+          name: item.name.trim(),
+          gameCategory: item.gameCategory.trim(),
+          ...(item.value && { value: item.value }), // Include value if present
+          ...(item.mutation && { mutation: item.mutation }), // Include mutation if present
+          ...(traits.length > 0 && { traits }),
+          ...(traits.length > 0 && { trait: traits[0] }), // Keep legacy single trait for backwards compatibility
+          ...(item.weight && { weight: item.weight }) // Include weight if present
+        };
+      });
     
     const wantedItems = wanted
       .filter(item => item && item.name && item.gameCategory && item.name.trim() && item.gameCategory.trim())
-      .map(item => ({
-        name: item.name.trim(),
-        gameCategory: item.gameCategory.trim(),
-        ...(item.value && { value: item.value }), // Include value if present
-        ...(item.mutation && { mutation: item.mutation }), // Include mutation if present
-        ...(item.trait && { trait: item.trait }), // Include trait if present
-        ...(item.weight && { weight: item.weight }) // Include weight if present
-      }));
+      .map(item => {
+        const traits = normalizeTraitsList(item);
+        return {
+          name: item.name.trim(),
+          gameCategory: item.gameCategory.trim(),
+          ...(item.value && { value: item.value }), // Include value if present
+          ...(item.mutation && { mutation: item.mutation }), // Include mutation if present
+          ...(traits.length > 0 && { traits }),
+          ...(traits.length > 0 && { trait: traits[0] }),
+          ...(item.weight && { weight: item.weight }) // Include weight if present
+        };
+      });
 
     console.log('After filtering:', {
       offeredItemsCount: offeredItems.length,
@@ -371,10 +399,27 @@ router.post('/', ensureAuth, formLimiter, validateTrade, async (req, res) => {
 // Update trade (moderator only)
 router.put('/:id', ensureAuth, ensureModerator, validateTrade, async (req, res) => {
   try {
-    const { offered, wanted, value, robloxUsername, status } = req.body;
+    const { offered = [], wanted = [], value, robloxUsername, status } = req.body;
 
-    const offeredItems = offered.filter(item => item.name || item.gameCategory);
-    const wantedItems = wanted.filter(item => item.name || item.gameCategory);
+    const sanitizeItems = (items) => {
+      return (Array.isArray(items) ? items : [])
+        .filter(item => item && item.name && item.gameCategory && item.name.trim() && item.gameCategory.trim())
+        .map(item => {
+          const traits = normalizeTraitsList(item);
+          return {
+            name: item.name.trim(),
+            gameCategory: item.gameCategory.trim(),
+            ...(item.value && { value: item.value }),
+            ...(item.mutation && { mutation: item.mutation }),
+            ...(traits.length > 0 && { traits }),
+            ...(traits.length > 0 && { trait: traits[0] }),
+            ...(item.weight && { weight: item.weight })
+          };
+        });
+    };
+
+    const offeredItems = sanitizeItems(offered);
+    const wantedItems = sanitizeItems(wanted);
 
     // Determine if it's a cross-trade
     let isCrossTrade = 0;

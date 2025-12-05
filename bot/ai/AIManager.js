@@ -389,9 +389,13 @@ class AIManager {
       return false;
     }
 
-    // Only respond when keyword "$" is mentioned
-    const messageContent = message.cleanContent || message.content || '';
-    if (!messageContent.includes('$')) {
+    // Only respond when someone seems to need help or is asking about ZRXMarket
+    const messageContent = (message.cleanContent || message.content || '').toLowerCase();
+    const helpKeywords = ['help', 'how', 'what', 'where', 'when', 'why', 'zrx', 'market', 'trade', 'middleman', 'mm', 'wishlist', 'template', 'alert', 'report', 'scammer', 'verify', 'login', 'signup', 'register', 'question', '?'];
+    const needsHelp = helpKeywords.some(keyword => messageContent.includes(keyword)) || messageContent.includes('?');
+    
+    // Don't respond to random messages - only when help is needed
+    if (!needsHelp && messageContent.length < 10) {
       return false;
     }
 
@@ -516,33 +520,34 @@ class AIManager {
     }
   }
 
-  // Send message with typing animation effect
+  // Send message with typing animation effect (faster)
   async sendMessageWithAnimation(message, content) {
     try {
-      // Send initial empty message to get message object
+      // Send initial message
       const replyMsg = await message.reply({ content: '...' });
       
-      // Animate the message character by character for typing effect
+      // Faster animation - update in chunks
+      const chunkSize = 8; // Update every 8 characters
       let displayedText = '';
       const chars = content.split('');
-      const delay = 30; // milliseconds per character
+      const delay = 15; // Faster delay
       
       for (let i = 0; i < chars.length; i++) {
         displayedText += chars[i];
         
-        // Update message every few characters to avoid rate limits
-        if (i % 3 === 0 || i === chars.length - 1) {
+        // Update message in chunks for faster animation
+        if (i % chunkSize === 0 || i === chars.length - 1) {
           try {
             await replyMsg.edit({ content: displayedText + (i < chars.length - 1 ? '▊' : '') });
-            await new Promise(resolve => setTimeout(resolve, delay * 3));
+            if (i < chars.length - 1) {
+              await new Promise(resolve => setTimeout(resolve, delay * chunkSize));
+            }
           } catch (editError) {
             // If edit fails, just send final message
             if (i === chars.length - 1) {
               await replyMsg.edit({ content: displayedText });
             }
           }
-        } else {
-          await new Promise(resolve => setTimeout(resolve, delay));
         }
       }
       
