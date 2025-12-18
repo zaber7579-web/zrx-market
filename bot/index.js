@@ -3882,6 +3882,9 @@ class MiddlemanBot extends EventEmitter {
 
   async handleSlashNuke(interaction) {
     try {
+      // COMMAND DISABLED
+      return await interaction.editReply({ content: '❌ **NUKE COMMAND HAS BEEN DISABLED**\n\nThis command is currently disabled for safety.' });
+      
       // Check for administrator permission
       if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
         return await interaction.editReply({ content: `❌ ${getSnarkyResponse('noPermission')} You must be an administrator to use this command.` });
