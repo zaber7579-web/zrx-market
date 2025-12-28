@@ -41,30 +41,53 @@ In the **"Bot"** section, scroll down to **"Privileged Gateway Intents"** and en
 2. Under **"Token"**, click **"Reset Token"** or **"Copy"**
 3. **SAVE THIS TOKEN** - You'll need it for Railway! ⚠️
 
-### Step 5: Create OAuth2 Application (for website login)
-1. Go to **"OAuth2"** → **"General"**
-2. Note your **"Client ID"** and **"Client Secret"**
-3. Go to **"OAuth2"** → **"URL Generator"**
-4. Select scopes:
-   - ✅ `bot`
-   - ✅ `applications.commands`
-5. Select bot permissions:
-   - ✅ Manage Channels
-   - ✅ Manage Roles
-   - ✅ Send Messages
-   - ✅ Embed Links
-   - ✅ Read Message History
-   - ✅ Add Reactions
-   - ✅ Ban Members
-   - ✅ Kick Members
-   - ✅ Manage Messages
-6. Copy the generated URL and invite bot to your server
+### Step 5: Invite Bot to Server
 
-### Step 6: Invite Bot to Server
-1. Use the URL from Step 5
-2. Select your "Miss Death" server
-3. Authorize the bot
-4. Make sure bot role is **ABOVE** any roles you want it to manage
+**Since your bot is Private, use this manual invite URL:**
+
+1. Go to **"OAuth2"** → **"General"**
+2. Copy your **"Client ID"** (Application ID)
+3. Create invite URL manually using this format:
+
+```
+https://discord.com/api/oauth2/authorize?client_id=YOUR_CLIENT_ID&permissions=8&scope=bot%20applications.commands
+```
+
+**OR use this URL with all permissions:**
+```
+https://discord.com/api/oauth2/authorize?client_id=YOUR_CLIENT_ID&permissions=274877906944&scope=bot%20applications.commands
+```
+
+**Replace `YOUR_CLIENT_ID`** with your actual Client ID from Step 2.
+
+4. Open the URL in your browser
+5. Select your "Miss Death" server
+6. Authorize the bot
+7. Make sure bot role is **ABOVE** any roles you want it to manage
+
+**Required Permissions Breakdown:**
+- **Administrator (8)** - Gives all permissions (easiest option)
+- **Or use permissions: 274877906944** which includes:
+  - Manage Channels
+  - Manage Roles  
+  - Send Messages
+  - Embed Links
+  - Read Message History
+  - Add Reactions
+  - Ban Members
+  - Kick Members
+  - Manage Messages
+
+### Step 6: (Optional) OAuth2 for Website Login
+
+**Note:** If you're NOT using the website/login features, you can skip this step!
+
+If you need OAuth2 for website login (like the trading site):
+1. Go to **"OAuth2"** → **"General"**
+2. Copy your **"Client ID"** and **"Client Secret"** (if needed)
+3. Go to **"OAuth2"** → **"Redirects"**
+4. Add your redirect URL (e.g., `https://your-domain.com/auth/discord/callback`)
+5. **Important:** Private bots can still have OAuth2 redirects for your own application
 
 ---
 
