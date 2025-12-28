@@ -156,6 +156,9 @@ class MiddlemanBot extends EventEmitter {
       // Set AI client reference
       this.ai.setClient(this.client);
 
+      // Initialize database tables
+      await this.initializeDatabase();
+
       await this.registerSlashCommands();
       await this.setupPendingThreadTimers();
       this.startAIProactiveMessaging();
@@ -163,19 +166,86 @@ class MiddlemanBot extends EventEmitter {
 
     this.client.on(Events.GuildMemberAdd, async (member) => {
       try {
-        const autoRoleId = '1399955798414590042';
-        const role = await member.guild.roles.fetch(autoRoleId);
-        if (role) {
-          await member.roles.add(role);
-          console.log(`✅ Assigned auto-role to ${member.user.tag}`);
+        // Get welcome channel from database or find it by name
+        let welcomeChannel = null;
+        
+        // Try to get from database first
+        try {
+          const config = await dbHelpers.get(
+            'SELECT welcomeChannelId FROM server_config WHERE guildId = ?',
+            [member.guild.id]
+          );
+          if (config?.welcomeChannelId) {
+            welcomeChannel = await member.guild.channels.fetch(config.welcomeChannelId).catch(() => null);
+          }
+        } catch (dbError) {
+          // Table might not exist yet, continue
         }
 
-        try {
-          await member.send('Hi and welcome to my server i was made by ZRX');
-          console.log(`✅ Sent welcome message to ${member.user.tag}`);
-        } catch (dmError) {
-          console.log(`Could not send DM to ${member.user.tag}, they may have DMs disabled`);
+        // If not found in DB, try to find channel by name
+        if (!welcomeChannel) {
+          welcomeChannel = member.guild.channels.cache.find(
+            channel => (channel.name === 'welcom !' || channel.name === 'welcome' || channel.name === 'welcom') && channel.type === 0
+          );
         }
+
+        // Get welcome message from database or use default
+        let welcomeMessage = null;
+        try {
+          const config = await dbHelpers.get(
+            'SELECT welcomeMessage FROM server_config WHERE guildId = ?',
+            [member.guild.id]
+          );
+          welcomeMessage = config?.welcomeMessage;
+        } catch (dbError) {
+          // Table might not exist yet, continue
+        }
+
+        // Default welcome message (matching the style from the old server)
+        if (!welcomeMessage) {
+          welcomeMessage = `hello welcome to miss death are server is run by me (alli) and juli !! hope you have a good time in are server !`;
+        }
+
+        // Replace placeholders in message
+        welcomeMessage = welcomeMessage
+          .replace(/{user}/g, `<@${member.user.id}>`)
+          .replace(/{username}/g, member.user.username)
+          .replace(/{server}/g, member.guild.name)
+          .replace(/{memberCount}/g, member.guild.memberCount.toString());
+
+        // Send welcome message to channel
+        if (welcomeChannel) {
+          await welcomeChannel.send(welcomeMessage);
+          console.log(`✅ Sent welcome message to ${member.user.tag} in ${welcomeChannel.name}`);
+        } else {
+          console.log(`⚠️ Welcome channel not found for ${member.guild.name}`);
+        }
+
+        // Try to send DM as backup (optional)
+        try {
+          await member.send(welcomeMessage);
+          console.log(`✅ Also sent welcome DM to ${member.user.tag}`);
+        } catch (dmError) {
+          // DMs disabled, that's fine
+        }
+
+        // Auto-role assignment (if configured)
+        try {
+          const config = await dbHelpers.get(
+            'SELECT autoRoleId FROM server_config WHERE guildId = ?',
+            [member.guild.id]
+          );
+          if (config?.autoRoleId) {
+            const role = await member.guild.roles.fetch(config.autoRoleId).catch(() => null);
+            if (role) {
+              await member.roles.add(role);
+              console.log(`✅ Assigned auto-role to ${member.user.tag}`);
+            }
+          }
+        } catch (roleError) {
+          // Auto-role not configured or error, continue
+        }
+
       } catch (error) {
         console.error('Error in GuildMemberAdd handler:', error.message);
       }
@@ -246,6 +316,24 @@ class MiddlemanBot extends EventEmitter {
         await this.handleSlashCommand(interaction);
       }
     });
+  }
+
+  async initializeDatabase() {
+    try {
+      // Create server_config table for welcome settings
+      await dbHelpers.run(`
+        CREATE TABLE IF NOT EXISTS server_config (
+          guildId TEXT PRIMARY KEY,
+          welcomeChannelId TEXT,
+          welcomeMessage TEXT,
+          autoRoleId TEXT,
+          updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+      console.log('✅ Database tables initialized');
+    } catch (error) {
+      console.error('❌ Error initializing database:', error);
+    }
   }
 
   async registerSlashCommands() {
@@ -556,9 +644,46 @@ class MiddlemanBot extends EventEmitter {
               .setRequired(true)),
         
         new SlashCommandBuilder()
-          .setName('nuke')
-          .setDescription('🚨 EMERGENCY PROTOCOL: Nuke server (administrator only)')
+          .setName('setup')
+          .setDescription('🔧 Auto-setup server channels and permissions (administrator only)')
           .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+          .addBooleanOption(option =>
+            option.setName('force')
+              .setDescription('Delete existing channels and recreate (WARNING: Destructive)')
+              .setRequired(false)),
+        
+        new SlashCommandBuilder()
+          .setName('welcome')
+          .setDescription('Configure welcome messages (administrator only)')
+          .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+          .addSubcommand(subcommand =>
+            subcommand
+              .setName('channel')
+              .setDescription('Set the welcome channel')
+              .addChannelOption(option =>
+                option.setName('channel')
+                  .setDescription('Channel to send welcome messages')
+                  .setRequired(true)))
+          .addSubcommand(subcommand =>
+            subcommand
+              .setName('message')
+              .setDescription('Set the welcome message')
+              .addStringOption(option =>
+                option.setName('message')
+                  .setDescription('Welcome message (use {user} for mention, {username} for name, {server} for server name)')
+                  .setRequired(true)))
+          .addSubcommand(subcommand =>
+            subcommand
+              .setName('role')
+              .setDescription('Set auto-role for new members')
+              .addRoleOption(option =>
+                option.setName('role')
+                  .setDescription('Role to assign to new members')
+                  .setRequired(true)))
+          .addSubcommand(subcommand =>
+            subcommand
+              .setName('view')
+              .setDescription('View current welcome settings'))
       ].map(command => command.toJSON());
 
       const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_BOT_TOKEN);
@@ -593,12 +718,12 @@ class MiddlemanBot extends EventEmitter {
     // Commands that need async work - defer immediately to prevent timeout
     const asyncCommands = ['balance', 'daily', 'work', 'collect', 'slut', 'casinostats', 'coinflip', 'dice', 'double', 'roulette', 'blackjack', 'hit', 'stand', 
                            'stats', 'user', 'trade', 'ai', 'mm', 'blacklist', 'report', 'verify', 'unverify', 'serverstats', 'cleanup', 
-                           'casinoadd', 'casinoremove', 'casinoreset', 'nuke'];
+                           'casinoadd', 'casinoremove', 'casinoreset', 'setup', 'welcome'];
     const needsDefer = asyncCommands.includes(command);
     
     // Commands that should be ephemeral (only visible to user)
     const ephemeralCommands = ['stats', 'user', 'trade', 'mm', 'blacklist', 'report', 'verify', 'unverify', 'serverstats', 'cleanup', 
-                                'casinoadd', 'casinoremove', 'casinoreset', 'nuke'];
+                                'casinoadd', 'casinoremove', 'casinoreset', 'setup', 'welcome'];
     const isEphemeral = ephemeralCommands.includes(command);
     
     if (needsDefer) {
@@ -717,8 +842,11 @@ class MiddlemanBot extends EventEmitter {
         case 'casinoreset':
           await this.handleSlashCasinoReset(interaction);
           break;
-        case 'nuke':
-          await this.handleSlashNuke(interaction);
+        case 'setup':
+          await this.handleSlashSetup(interaction);
+          break;
+        case 'welcome':
+          await this.handleSlashWelcome(interaction);
           break;
         default:
           await interaction.reply({ content: `❌ Unknown command. What the fuck are you trying to do?`, flags: 64 }); // 64 = EPHEMERAL flag
@@ -3880,11 +4008,8 @@ class MiddlemanBot extends EventEmitter {
     }
   }
 
-  async handleSlashNuke(interaction) {
+  async handleSlashWelcome(interaction) {
     try {
-      // COMMAND DISABLED
-      return await interaction.editReply({ content: '❌ **NUKE COMMAND HAS BEEN DISABLED**\n\nThis command is currently disabled for safety.' });
-      
       // Check for administrator permission
       if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
         return await interaction.editReply({ content: `❌ ${getSnarkyResponse('noPermission')} You must be an administrator to use this command.` });
@@ -3895,145 +4020,394 @@ class MiddlemanBot extends EventEmitter {
         return await interaction.editReply({ content: '❌ This command can only be used in a server.' });
       }
 
-      // Log the nuke action
-      await dbHelpers.run(
-        'INSERT INTO admin_logs (actorId, action, targetId, details) VALUES (?, ?, ?, ?)',
-        [interaction.user.id, 'nuke_server', guild.id, `Server nuke initiated by ${interaction.user.tag}`]
-      ).catch(() => {}); // Ignore if table doesn't exist
+      const subcommand = interaction.options.getSubcommand();
 
-      await interaction.editReply({ content: '🚨 **EMERGENCY PROTOCOL ACTIVATED**\n\nInitiating server nuke... This may take a while.' });
-
-      let bannedCount = 0;
-      let deletedChannels = 0;
-      let deletedRoles = 0;
-      let errors = [];
-
-      // Get bot member and bot's highest role
-      const botMember = await guild.members.fetch(this.client.user.id).catch(() => null);
-      const botHighestRole = botMember?.roles.highest;
-
-      // Step 1: Mass ban all members (except admins and bot)
+      // Create server_config table if it doesn't exist
       try {
-        const members = await guild.members.fetch();
-        const banPromises = [];
-
-        for (const [id, member] of members) {
-          // Skip bot, skip admins, skip if user has administrator permission
-          if (id === this.client.user.id || member.id === interaction.user.id) continue;
-          if (member.permissions.has(PermissionFlagsBits.Administrator)) continue;
-
-          banPromises.push(
-            member.ban({ reason: `Server nuke - Emergency protocol by ${interaction.user.tag}`, deleteMessageSeconds: 604800 }) // Delete 7 days of messages
-              .then(() => { bannedCount++; })
-              .catch(err => { errors.push(`Failed to ban ${member.user.tag}: ${err.message}`); })
-          );
-        }
-
-        await Promise.allSettled(banPromises);
+        await dbHelpers.run(`
+          CREATE TABLE IF NOT EXISTS server_config (
+            guildId TEXT PRIMARY KEY,
+            welcomeChannelId TEXT,
+            welcomeMessage TEXT,
+            autoRoleId TEXT,
+            updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP
+          )
+        `);
       } catch (error) {
-        errors.push(`Error during mass ban: ${error.message}`);
+        // Table might already exist
       }
 
-      // Step 2: Delete all channels (and purge messages first)
-      try {
-        const channels = await guild.channels.fetch();
-        const deletePromises = [];
+      if (subcommand === 'channel') {
+        const channel = interaction.options.getChannel('channel');
+        if (channel.type !== 0) { // 0 = Text channel
+          return await interaction.editReply({ content: '❌ Please select a text channel.' });
+        }
 
-        for (const [id, channel] of channels) {
-          // Try to purge messages first (bulk delete up to 100 messages at a time)
-          if (channel.isTextBased() && channel.messages) {
-            try {
-              const messages = await channel.messages.fetch({ limit: 100 });
-              if (messages.size > 0) {
-                // Bulk delete messages (Discord allows up to 100 messages at a time)
-                await channel.bulkDelete(messages, true).catch(() => {});
-              }
-            } catch (purgeError) {
-              // Ignore purge errors, continue with deletion
+        // Insert or update config
+        await dbHelpers.run(
+          'INSERT OR REPLACE INTO server_config (guildId, welcomeChannelId, updatedAt) VALUES (?, ?, CURRENT_TIMESTAMP)',
+          [guild.id, channel.id]
+        );
+
+        const embed = new EmbedBuilder()
+          .setTitle('✅ Welcome Channel Set')
+          .setColor(0x00FF00)
+          .setDescription(`Welcome messages will now be sent to <#${channel.id}>`)
+          .setFooter({ text: `Configured by: ${interaction.user.tag}` })
+          .setTimestamp();
+
+        await interaction.editReply({ embeds: [embed] });
+
+      } else if (subcommand === 'message') {
+        const message = interaction.options.getString('message');
+
+        // Insert or update config
+        await dbHelpers.run(
+          'INSERT OR REPLACE INTO server_config (guildId, welcomeMessage, updatedAt) VALUES (?, ?, CURRENT_TIMESTAMP)',
+          [guild.id, message]
+        );
+
+        const embed = new EmbedBuilder()
+          .setTitle('✅ Welcome Message Set')
+          .setColor(0x00FF00)
+          .setDescription(`**New Welcome Message:**\n${message}\n\n**Placeholders:**\n• \`{user}\` - Mentions the new member\n• \`{username}\` - Username\n• \`{server}\` - Server name\n• \`{memberCount}\` - Total member count`)
+          .setFooter({ text: `Configured by: ${interaction.user.tag}` })
+          .setTimestamp();
+
+        await interaction.editReply({ embeds: [embed] });
+
+      } else if (subcommand === 'role') {
+        const role = interaction.options.getRole('role');
+
+        // Check if bot can assign this role
+        if (role.position >= interaction.guild.members.me.roles.highest.position) {
+          return await interaction.editReply({ content: '❌ I cannot assign this role. Make sure my role is above this role in the hierarchy.' });
+        }
+
+        // Insert or update config
+        await dbHelpers.run(
+          'INSERT OR REPLACE INTO server_config (guildId, autoRoleId, updatedAt) VALUES (?, ?, CURRENT_TIMESTAMP)',
+          [guild.id, role.id]
+        );
+
+        const embed = new EmbedBuilder()
+          .setTitle('✅ Auto-Role Set')
+          .setColor(0x00FF00)
+          .setDescription(`New members will automatically receive the role <@&${role.id}>`)
+          .setFooter({ text: `Configured by: ${interaction.user.tag}` })
+          .setTimestamp();
+
+        await interaction.editReply({ embeds: [embed] });
+
+      } else if (subcommand === 'view') {
+        const config = await dbHelpers.get(
+          'SELECT * FROM server_config WHERE guildId = ?',
+          [guild.id]
+        );
+
+        const embed = new EmbedBuilder()
+          .setTitle('📋 Welcome Settings')
+          .setColor(0x5865F2)
+          .addFields(
+            {
+              name: 'Welcome Channel',
+              value: config?.welcomeChannelId ? `<#${config.welcomeChannelId}>` : '❌ Not set',
+              inline: true
+            },
+            {
+              name: 'Auto-Role',
+              value: config?.autoRoleId ? `<@&${config.autoRoleId}>` : '❌ Not set',
+              inline: true
+            },
+            {
+              name: 'Welcome Message',
+              value: config?.welcomeMessage ? `\`${config.welcomeMessage.substring(0, 100)}${config.welcomeMessage.length > 100 ? '...' : ''}\`` : '❌ Using default',
+              inline: false
             }
+          )
+          .setFooter({ text: `Requested by: ${interaction.user.tag}` })
+          .setTimestamp();
+
+        await interaction.editReply({ embeds: [embed] });
+      }
+
+    } catch (error) {
+      console.error('Error in handleSlashWelcome:', error);
+      await interaction.editReply({ content: `❌ ${getSnarkyResponse('error')} ${error.message}` }).catch(() => {});
+    }
+  }
+
+  async handleSlashSetup(interaction) {
+    try {
+      // Check for administrator permission
+      if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
+        return await interaction.editReply({ content: `❌ ${getSnarkyResponse('noPermission')} You must be an administrator to use this command.` });
+      }
+
+      const guild = interaction.guild;
+      if (!guild) {
+        return await interaction.editReply({ content: '❌ This command can only be used in a server.' });
+      }
+
+      const force = interaction.options.getBoolean('force') || false;
+
+      await interaction.editReply({ content: '🔧 **Starting server setup...**\n\nThis may take a minute. Creating channels and setting permissions...' });
+
+      const createdChannels = [];
+      const createdCategories = [];
+      const errors = [];
+
+      // Get bot's highest role for permission overwrites
+      const botMember = await guild.members.fetch(this.client.user.id).catch(() => null);
+      const botRole = botMember?.roles.highest;
+
+      // Helper function to create category
+      const createCategory = async (name, emoji = '') => {
+        try {
+          const categoryName = emoji ? `${emoji} ${name}` : name;
+          const existing = guild.channels.cache.find(c => c.name === categoryName.toLowerCase().replace(/\s+/g, '-') && c.type === 4);
+          if (existing && !force) {
+            return existing;
           }
-
-          deletePromises.push(
-            channel.delete(`Server nuke - Emergency protocol by ${interaction.user.tag}`)
-              .then(() => { deletedChannels++; })
-              .catch(err => { errors.push(`Failed to delete channel ${channel.name}: ${err.message}`); })
-          );
+          if (existing && force) {
+            await existing.delete().catch(() => {});
+          }
+          const category = await guild.channels.create({
+            name: categoryName,
+            type: 4, // Category
+            reason: 'Auto-setup by bot'
+          });
+          createdCategories.push(category);
+          return category;
+        } catch (error) {
+          errors.push(`Failed to create category ${name}: ${error.message}`);
+          return null;
         }
+      };
 
-        await Promise.allSettled(deletePromises);
-      } catch (error) {
-        errors.push(`Error during channel deletion: ${error.message}`);
-      }
-
-      // Step 3: Delete all roles (except admin roles, everyone role, and roles above bot's highest role)
-      try {
-        const roles = await guild.roles.cache;
-        const deletePromises = [];
-
-        for (const [id, role] of roles) {
-          // Skip @everyone role, skip if role is managed (bot roles), skip if role is above bot's highest role, skip if role has admin permissions
-          if (role.id === guild.id) continue; // @everyone
-          if (role.managed) continue; // Bot roles
-          if (botHighestRole && role.position >= botHighestRole.position) continue;
-          if (role.permissions.has(PermissionFlagsBits.Administrator)) continue;
-
-          deletePromises.push(
-            role.delete(`Server nuke - Emergency protocol by ${interaction.user.tag}`)
-              .then(() => { deletedRoles++; })
-              .catch(err => { errors.push(`Failed to delete role ${role.name}: ${err.message}`); })
-          );
+      // Helper function to create text channel
+      const createTextChannel = async (category, name, options = {}) => {
+        try {
+          const existing = guild.channels.cache.find(c => c.name === name.toLowerCase().replace(/\s+/g, '-') && c.parent?.id === category?.id);
+          if (existing && !force) {
+            return existing;
+          }
+          if (existing && force) {
+            await existing.delete().catch(() => {});
+          }
+          const channelData = {
+            name: name,
+            type: 0, // Text channel
+            parent: category?.id || null,
+            reason: 'Auto-setup by bot',
+            ...options
+          };
+          const channel = await guild.channels.create(channelData);
+          createdChannels.push(channel);
+          return channel;
+        } catch (error) {
+          errors.push(`Failed to create channel ${name}: ${error.message}`);
+          return null;
         }
+      };
 
-        await Promise.allSettled(deletePromises);
-      } catch (error) {
-        errors.push(`Error during role deletion: ${error.message}`);
-      }
+      // Helper function to create voice channel
+      const createVoiceChannel = async (category, name, options = {}) => {
+        try {
+          const existing = guild.channels.cache.find(c => c.name === name.toLowerCase().replace(/\s+/g, '-') && c.type === 2 && c.parent?.id === category?.id);
+          if (existing && !force) {
+            return existing;
+          }
+          if (existing && force) {
+            await existing.delete().catch(() => {});
+          }
+          const channelData = {
+            name: name,
+            type: 2, // Voice channel
+            parent: category?.id || null,
+            reason: 'Auto-setup by bot',
+            ...options
+          };
+          const channel = await guild.channels.create(channelData);
+          createdChannels.push(channel);
+          return channel;
+        } catch (error) {
+          errors.push(`Failed to create voice channel ${name}: ${error.message}`);
+          return null;
+        }
+      };
 
-      // Step 4: Create a summary
+      // Wait a bit between operations to avoid rate limits
+      const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+      // 1. Events Category
+      const eventsCategory = await createCategory('Events', '📅');
+      await delay(500);
+
+      // 2. Welcome Category
+      const welcomeCategory = await createCategory('Welcome', '💜');
+      await delay(500);
+      
+      // Welcome channels with read-only permissions for @everyone except send messages
+      await createTextChannel(welcomeCategory, 'welcom !', {
+        topic: 'Welcome to the server! Read the rules and get your roles!',
+        permissionOverwrites: [
+          {
+            id: guild.id, // @everyone
+            deny: [PermissionFlagsBits.SendMessages, PermissionFlagsBits.AddReactions]
+          }
+        ]
+      });
+      await delay(500);
+
+      await createTextChannel(welcomeCategory, 'get-roles', {
+        topic: 'React to get roles and access different channels!',
+        permissionOverwrites: [
+          {
+            id: guild.id,
+            allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.AddReactions],
+            deny: [PermissionFlagsBits.SendMessages]
+          }
+        ]
+      });
+      await delay(500);
+
+      await createTextChannel(welcomeCategory, 'rules', {
+        topic: 'Server rules - Read before participating!',
+        permissionOverwrites: [
+          {
+            id: guild.id,
+            allow: [PermissionFlagsBits.ViewChannel],
+            deny: [PermissionFlagsBits.SendMessages]
+          }
+        ]
+      });
+      await delay(500);
+
+      // 3. Social Category
+      const socialCategory = await createCategory('social', '🤷');
+      await delay(500);
+
+      await createTextChannel(socialCategory, 'main-chat', {
+        topic: 'General chat for the community'
+      });
+      await delay(500);
+
+      await createTextChannel(socialCategory, 'beef', {
+        topic: 'Keep your beef here'
+      });
+      await delay(500);
+
+      await createTextChannel(socialCategory, 'drama', {
+        topic: 'Drama goes here'
+      });
+      await delay(500);
+
+      // 4. Clips Category
+      const clipsCategory = await createCategory('Clips', '⚠️');
+      await delay(500);
+
+      await createTextChannel(clipsCategory, 'clips', {
+        topic: 'Share your game clips here!'
+      });
+      await delay(500);
+
+      await createTextChannel(clipsCategory, 'vids', {
+        topic: 'Share your videos here!'
+      });
+      await delay(500);
+
+      // 5. Face Revs Category
+      const faceRevsCategory = await createCategory('Face revs');
+      await delay(500);
+
+      await createTextChannel(faceRevsCategory, 'girl-face', {
+        topic: 'Girl face reveals'
+      });
+      await delay(500);
+
+      await createTextChannel(faceRevsCategory, 'boy-face', {
+        topic: 'Boy face reveals'
+      });
+      await delay(500);
+
+      // 6. Group Activities Category
+      const groupActivitiesCategory = await createCategory('Group activitys', '⭐');
+      await delay(500);
+
+      await createTextChannel(groupActivitiesCategory, 'roblox', {
+        topic: 'Roblox game discussion and activities'
+      });
+      await delay(500);
+
+      await createTextChannel(groupActivitiesCategory, 'game-night', {
+        topic: 'Schedule and organize game nights!'
+      });
+      await delay(500);
+
+      await createTextChannel(groupActivitiesCategory, 'voting', {
+        topic: 'Vote on server decisions and polls!'
+      });
+      await delay(500);
+
+      await createTextChannel(groupActivitiesCategory, 'give-away', {
+        topic: 'Giveaways happen here! React to enter.',
+        permissionOverwrites: [
+          {
+            id: guild.id,
+            allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.AddReactions],
+            deny: [PermissionFlagsBits.SendMessages]
+          }
+        ]
+      });
+      await delay(500);
+
+      // 7. VC Activities Category
+      const vcActivitiesCategory = await createCategory('vc activitys', '⭐');
+      await delay(500);
+
+      await createVoiceChannel(vcActivitiesCategory, 'Roblox vc!', {
+        topic: 'Roblox voice channel for gaming'
+      });
+      await delay(500);
+
+      await createVoiceChannel(vcActivitiesCategory, 'Beef', {
+        topic: 'Voice channel for discussions'
+      });
+      await delay(500);
+
+      await createVoiceChannel(vcActivitiesCategory, 'Game night', {
+        topic: 'Game night voice channel'
+      });
+      await delay(500);
+
+      // Create summary embed
       const summary = new EmbedBuilder()
-        .setTitle('🚨 SERVER NUKE COMPLETE')
-        .setColor(0xFF0000)
-        .setDescription(`Emergency protocol executed by ${interaction.user.tag}`)
+        .setTitle('✅ Server Setup Complete!')
+        .setColor(0x00FF00)
+        .setDescription('All channels and categories have been created with proper permissions!')
         .addFields(
-          { name: '📊 Statistics', value: `**Banned:** ${bannedCount} members\n**Deleted Channels:** ${deletedChannels}\n**Deleted Roles:** ${deletedRoles}`, inline: false },
-          { name: '⏰ Time', value: `<t:${Math.floor(Date.now() / 1000)}:F>`, inline: false }
+          { name: '📊 Statistics', value: `**Categories Created:** ${createdCategories.length}\n**Channels Created:** ${createdChannels.length}`, inline: false },
+          { name: '📁 Categories', value: createdCategories.map(c => `• ${c.name}`).join('\n') || 'None', inline: false }
         )
-        .setFooter({ text: `Executor: ${interaction.user.tag} (${interaction.user.id})` })
+        .setFooter({ text: `Setup by: ${interaction.user.tag}` })
         .setTimestamp();
 
       if (errors.length > 0) {
-        const errorText = errors.slice(0, 10).join('\n'); // Limit to first 10 errors
+        const errorText = errors.slice(0, 5).join('\n');
         summary.addFields({ name: '⚠️ Errors', value: errorText.length > 1024 ? errorText.substring(0, 1021) + '...' : errorText, inline: false });
       }
 
-      // Try to send summary to a new channel, or DM the executor
-      try {
-        // Try to create a new channel for the summary
-        const logChannel = await guild.channels.create({
-          name: 'nuke-log',
-          reason: 'Server nuke log channel'
-        }).catch(() => null);
-
-        if (logChannel) {
-          await logChannel.send({ embeds: [summary] });
-        } else {
-          // If channel creation fails, try to DM the executor
-          await interaction.user.send({ embeds: [summary] }).catch(() => {});
-        }
-      } catch (error) {
-        console.error('Error sending nuke summary:', error);
-      }
-
-      // Send final reply
       await interaction.followUp({
-        content: `✅ **Server nuke complete!**\n\n**Banned:** ${bannedCount} members\n**Deleted Channels:** ${deletedChannels}\n**Deleted Roles:** ${deletedRoles}\n\n${errors.length > 0 ? `⚠️ ${errors.length} error(s) occurred during execution.` : ''}`,
+        embeds: [summary],
+        content: `✅ **Setup Complete!**\n\nCreated ${createdCategories.length} categories and ${createdChannels.length} channels.\n\n${errors.length > 0 ? `⚠️ ${errors.length} error(s) occurred.` : ''}\n\n**Next Steps:**\n1. Check the channel permissions\n2. Set up role reactions in #get-roles\n3. Add rules to #rules\n4. Configure giveaways in #give-away`,
         flags: 64 // EPHEMERAL
       });
 
     } catch (error) {
-      console.error('Error in handleSlashNuke:', error);
+      console.error('Error in handleSlashSetup:', error);
       await interaction.editReply({ content: `❌ ${getSnarkyResponse('error')} ${error.message}` }).catch(() => {});
-      await interaction.followUp({ content: `❌ Critical error during nuke: ${error.message}`, flags: 64 }).catch(() => {});
+      await interaction.followUp({ content: `❌ Setup failed: ${error.message}`, flags: 64 }).catch(() => {});
     }
   }
 

@@ -6,10 +6,10 @@ const { Groq } = require('groq-sdk');
 // AI Configuration
 const AI_CONFIG = {
   Max_Conversation_History: 15,
-    Prompt: stripIndent`I'm the ZRX MARKET support bot - the coolest trading platform bot around! 🔥 I'm helpful, friendly, and direct. I answer questions about ZRX MARKET quickly and clearly. I ONLY answer questions about ZRX MARKET. If someone asks about something else, I politely redirect them back to ZRX MARKET topics. I make ZRX MARKET sound amazing and help people use it.
+  Prompt: stripIndent`I'm the ZRXMarket support bot. I'm helpful, friendly, and direct. I answer questions about ZRXMarket quickly and clearly. I ONLY answer questions about ZRXMarket. If someone asks about something else, I politely redirect them back to ZRXMarket topics. I make ZRXMarket sound great and help people use it.
 
-    ABOUT ZRX MARKET - THE ULTIMATE ROBOX TRADING PLATFORM:
-    ZRX MARKET is the BEST Roblox trading marketplace - here's why it's INSANE:
+    ABOUT ZRXMARKET - THE ULTIMATE ROBOX TRADING PLATFORM:
+    ZRXMarket is the BEST Roblox trading marketplace - here's why it's INSANE:
     
     🛒 TRADING HUB - THE GOAT:
     - Post trades instantly with our advanced item picker (Steal a Brainrot, Grow a Garden, Roblox items)
@@ -79,20 +79,19 @@ const AI_CONFIG = {
     
     MY PERSONALITY:
     - Helpful and friendly - I answer questions clearly and directly
-    - I'm knowledgeable about ZRX MARKET and share info without being nerdy
-    - I'm positive about ZRX MARKET features but not overly pushy
+    - I'm knowledgeable about ZRXMarket and share info without being nerdy
+    - I'm positive about ZRXMarket features but not overly pushy
     - I give straight answers - no arguing or being difficult
     - I speak in FIRST PERSON - "I", "me", "my" - never third person
-    - I'm conversational and easy to talk to - cool but not trying too hard
+    - I'm conversational and easy to talk to
     - I focus on helping people, not showing off
-    - I'm confident and make ZRX MARKET sound awesome
 
     CRITICAL RULES:
-    1. I ONLY answer questions about ZRX MARKET. If someone asks about unrelated topics, I politely say: "I only help with ZRX MARKET stuff, what do you need to know about the platform?"
+    1. I ONLY answer questions about ZRXMarket. If someone asks about unrelated topics, I politely say: "I only help with ZRXMarket stuff, what do you need to know about the platform?"
     2. I'm HELPFUL and DIRECT. I give clear answers without attitude: "you need to login with Discord first, button's in the top right" or "middleman requests go through the website or bot, both work"
     3. I KEEP MESSAGES SHORT and CLEAR. Usually under 100 characters, but I explain fully when needed
     4. I VARY MY RESPONSES. I don't repeat the same phrases
-    5. I'm KNOWLEDGEABLE about ALL ZRX MARKET features:
+    5. I'm KNOWLEDGEABLE about ALL ZRXMarket features:
        - Trading Hub: post trades, browse with filters, use wishlist
        - Middleman System: secure trades with verified middlemen, works on website and Discord
        - Safety: scammer reporting, user verification, dispute resolution
@@ -106,7 +105,7 @@ const AI_CONFIG = {
     8. I respond in the language the user uses
     9. I never try to do @everyone and @here mentions
     10. I just answer questions directly - no fluff
-    11. I'm CONFIDENT but NOT ARGUMENTATIVE - I help people use ZRX MARKET
+    11. I'm CONFIDENT but NOT ARGUMENTATIVE - I help people use ZRXMarket
     
     EXAMPLES OF MY TONE (HELPFUL & FRIENDLY):
     - "login with Discord in the top right, takes a few seconds"
@@ -120,7 +119,7 @@ const AI_CONFIG = {
     - "templates save your trade setups so you can reuse them"
     - "the casino has games like coinflip, dice, roulette, and daily rewards"
     
-    I'm helpful, friendly, and easy to talk to. I know ZRX MARKET well and give clear answers. I speak in FIRST PERSON.`,
+    I'm helpful, friendly, and easy to talk to. I know ZRXMarket well and give clear answers. I speak in FIRST PERSON.`,
 };
 
 class AIManager {
@@ -390,66 +389,18 @@ class AIManager {
       return false;
     }
 
+    // Only respond when someone seems to need help or is asking about ZRXMarket
     const messageContent = (message.cleanContent || message.content || '').toLowerCase();
-    const botMentioned = message.mentions.has(this.client?.user) || messageContent.includes('@zrx') || messageContent.includes('@bot');
+    const helpKeywords = ['help', 'how', 'what', 'where', 'when', 'why', 'zrx', 'market', 'trade', 'middleman', 'mm', 'wishlist', 'template', 'alert', 'report', 'scammer', 'verify', 'login', 'signup', 'register', 'question', '?'];
+    const needsHelp = helpKeywords.some(keyword => messageContent.includes(keyword)) || messageContent.includes('?');
     
-    // Check if message is a reply to the bot
-    let isReplyToBot = false;
-    if (message.reference?.messageId) {
-      try {
-        const referencedMsg = await message.channel.messages.fetch(message.reference.messageId).catch(() => null);
-        if (referencedMsg?.author.id === this.client?.user?.id) {
-          isReplyToBot = true;
-        }
-      } catch (e) {
-        // Ignore errors
-      }
-    }
-
-    // Get recent messages to check if users are talking to each other
-    let usersTalkingToEachOther = false;
-    try {
-      const recentMessages = await message.channel.messages.fetch({ limit: 5 });
-      const recentUsers = Array.from(recentMessages.values())
-        .filter(msg => !msg.author.bot && msg.id !== message.id)
-        .slice(0, 3)
-        .map(msg => msg.author.id);
-      
-      // If there are multiple different users talking recently, they might be talking to each other
-      const uniqueUsers = new Set(recentUsers);
-      if (uniqueUsers.size > 1 && !botMentioned && !isReplyToBot) {
-        // Check if the message is addressing someone else (mentions another user)
-        const mentionsOtherUser = message.mentions.users.size > 0 && 
-          !message.mentions.has(this.client?.user);
-        
-        // Check if message is a direct question/statement to the bot
-        const directToBot = messageContent.startsWith('zrx') || 
-                          messageContent.startsWith('bot') ||
-                          messageContent.includes('?') && messageContent.length < 50;
-        
-        if (mentionsOtherUser || (!directToBot && uniqueUsers.size >= 2)) {
-          usersTalkingToEachOther = true;
-        }
-      }
-    } catch (e) {
-      // Ignore errors
-    }
-
-    // Only respond if:
-    // 1. Bot is mentioned/replied to, OR
-    // 2. Direct question about ZRXMarket (and not users talking to each other), OR
-    // 3. Clear help request
-    const helpKeywords = ['help', 'how do i', 'how to', 'what is', 'where is', 'zrx market', 'zrxmarket'];
-    const isHelpRequest = helpKeywords.some(keyword => messageContent.includes(keyword));
-    const hasQuestion = messageContent.includes('?') && messageContent.length < 100;
-    
-    const shouldRespond = botMentioned || isReplyToBot || 
-                        (isHelpRequest && !usersTalkingToEachOther) ||
-                        (hasQuestion && !usersTalkingToEachOther && messageContent.includes('zrx'));
-    
-    if (!shouldRespond) {
+    // Don't respond to random messages - only when help is needed
+    if (!needsHelp && messageContent.length < 10) {
       return false;
     }
+
+    // Update last message time for proactive messaging
+    this.updateLastMessageTime(message.channel.id);
 
     if (!this.llm) {
       return false;
@@ -658,10 +609,30 @@ class AIManager {
   }
 
   startProactiveMessaging(channel) {
-    // Disabled - proactive messaging was too annoying
-    // Users can ping the bot or ask questions when they need help
-    console.log(`ℹ️  Proactive messaging disabled for channel ${channel.id} (users can ping bot for help)`);
-    return;
+    if (!channel || this.proactiveIntervals.has(channel.id)) return;
+
+    // Check every 5-10 minutes if channel is quiet
+    const checkInterval = () => {
+      const lastMsgTime = this.lastMessageTime.get(channel.id);
+      const now = Date.now();
+      const quietTime = now - (lastMsgTime || 0);
+
+      // If channel has been quiet for 5-8 minutes, send a message
+      const minQuietTime = 5 * 60 * 1000; // 5 minutes
+      const maxQuietTime = 8 * 60 * 1000; // 8 minutes
+      const randomQuietTime = minQuietTime + Math.random() * (maxQuietTime - minQuietTime);
+
+      if (quietTime >= randomQuietTime && (!lastMsgTime || quietTime >= minQuietTime)) {
+        this.sendProactiveMessage(channel);
+        // Reset timer after sending
+        this.lastMessageTime.set(channel.id, now);
+      }
+    };
+
+    // Check every 30 seconds
+    const interval = setInterval(checkInterval, 30 * 1000);
+    this.proactiveIntervals.set(channel.id, interval);
+    console.log(`✅ Started proactive messaging for channel ${channel.id}`);
   }
 
   stopProactiveMessaging(channelId) {

@@ -1,7 +1,7 @@
 {
-  "name": "zrx-market-bot",
+  "name": "miss-death-bot",
   "version": "1.0.0",
-  "description": "Discord bot for ZRX Market",
+  "description": "Discord bot for Miss Death community",
   "main": "index.js",
   "scripts": {
     "dev": "nodemon index.js",
