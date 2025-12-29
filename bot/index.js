@@ -1038,7 +1038,7 @@ class MiddlemanBot extends EventEmitter {
       }
 
       // Casino commands (public) - Channel restricted
-      const CASINO_CHANNEL_ID = '1406780875911336007';
+      const CASINO_CHANNEL_ID = '1454987252282294342';
       const isCasinoChannel = message.channel.id === CASINO_CHANNEL_ID;
       
       const casinoCommands = ['balance', 'bal', 'daily', 'casino', 'casinostats', 'coinflip', 'cf', 'dice', 'double', 'd', 'roulette', 'r', 'blackjack', 'bj', 'hit', 'stand'];
