@@ -2009,7 +2009,7 @@ class MiddlemanBot extends EventEmitter {
 
   async notifyModerationChannel(report) {
     try {
-      const channelId = '1443391819638636585';
+      const channelId = '1454986629549789297';
       const channel = this.client.channels.cache.get(channelId);
       if (!channel) {
         console.error('Scammer reports channel not found');
