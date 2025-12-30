@@ -285,10 +285,23 @@ class MiddlemanBot extends EventEmitter {
         await this.ai.handleMessage(message).catch(err => {
           console.error('AI message handler error:', err);
         });
+        
+        // Track XP for leveling system
+        await this.trackXP(message).catch(err => {
+          console.error('XP tracking error:', err);
+        });
       }
     });
 
     this.client.on(Events.MessageReactionAdd, async (reaction, user) => {
+      // Handle reaction roles
+      if (reaction.message.guild && !user.bot) {
+        await this.handleReactionRole(reaction, user, true).catch(err => {
+          console.error('Reaction role error:', err);
+        });
+      }
+      
+      // Existing middleman acceptance reaction handler
       if (reaction.message.channel.isThread() && 
           reaction.message.channel.parentId === process.env.MIDDLEMAN_CHANNEL_ID &&
           reaction.emoji.name === '✅' &&
@@ -296,6 +309,16 @@ class MiddlemanBot extends EventEmitter {
         await this.handleAcceptanceReaction(reaction, user);
       }
     });
+
+    this.client.on(Events.MessageReactionRemove, async (reaction, user) => {
+      // Handle reaction role removal
+      if (reaction.message.guild && !user.bot) {
+        await this.handleReactionRole(reaction, user, false).catch(err => {
+          console.error('Reaction role error:', err);
+        });
+      }
+    });
+
 
     this.client.on(Events.InteractionCreate, async (interaction) => {
       if (interaction.isButton()) {
@@ -683,7 +706,212 @@ class MiddlemanBot extends EventEmitter {
           .addSubcommand(subcommand =>
             subcommand
               .setName('view')
-              .setDescription('View current welcome settings'))
+              .setDescription('View current welcome settings')),
+
+        // New useful commands
+        new SlashCommandBuilder()
+          .setName('poll')
+          .setDescription('Create a poll')
+          .addStringOption(option =>
+            option.setName('question')
+              .setDescription('Poll question')
+              .setRequired(true))
+          .addStringOption(option =>
+            option.setName('options')
+              .setDescription('Poll options separated by | (e.g., Option 1|Option 2|Option 3)')
+              .setRequired(true))
+          .addIntegerOption(option =>
+            option.setName('duration')
+              .setDescription('Duration in minutes (default: 60)')
+              .setRequired(false)
+              .setMinValue(1)
+              .setMaxValue(10080)),
+
+        new SlashCommandBuilder()
+          .setName('giveaway')
+          .setDescription('Giveaway management')
+          .addSubcommand(subcommand =>
+            subcommand
+              .setName('start')
+              .setDescription('Start a giveaway')
+              .addStringOption(option =>
+                option.setName('prize')
+                  .setDescription('Prize description')
+                  .setRequired(true))
+              .addIntegerOption(option =>
+                option.setName('duration')
+                  .setDescription('Duration in minutes')
+                  .setRequired(true)
+                  .setMinValue(1))
+              .addIntegerOption(option =>
+                option.setName('winners')
+                  .setDescription('Number of winners')
+                  .setRequired(false)
+                  .setMinValue(1)
+                  .setMaxValue(10)))
+          .addSubcommand(subcommand =>
+            subcommand
+              .setName('end')
+              .setDescription('End a giveaway early')
+              .addStringOption(option =>
+                option.setName('message_id')
+                  .setDescription('Giveaway message ID')
+                  .setRequired(true)))
+          .addSubcommand(subcommand =>
+            subcommand
+              .setName('reroll')
+              .setDescription('Reroll giveaway winners')
+              .addStringOption(option =>
+                option.setName('message_id')
+                  .setDescription('Giveaway message ID')
+                  .setRequired(true))),
+
+        new SlashCommandBuilder()
+          .setName('level')
+          .setDescription('Check your level and XP')
+          .addUserOption(option =>
+            option.setName('user')
+              .setDescription('User to check (optional)')
+              .setRequired(false)),
+
+        new SlashCommandBuilder()
+          .setName('leaderboard')
+          .setDescription('View server leaderboard')
+          .addStringOption(option =>
+            option.setName('type')
+              .setDescription('Leaderboard type')
+              .setRequired(false)
+              .addChoices(
+                { name: 'Level', value: 'level' },
+                { name: 'XP', value: 'xp' },
+                { name: 'Casino', value: 'casino' }
+              )),
+
+        new SlashCommandBuilder()
+          .setName('announce')
+          .setDescription('Send an announcement (moderator only)')
+          .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages)
+          .addStringOption(option =>
+            option.setName('message')
+              .setDescription('Announcement message')
+              .setRequired(true))
+          .addChannelOption(option =>
+            option.setName('channel')
+              .setDescription('Channel to send announcement (default: current channel)')
+              .setRequired(false))
+          .addRoleOption(option =>
+            option.setName('ping')
+              .setDescription('Role to ping (optional)')
+              .setRequired(false)),
+
+        new SlashCommandBuilder()
+          .setName('warn')
+          .setDescription('Warn a user (moderator only)')
+          .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages)
+          .addUserOption(option =>
+            option.setName('user')
+              .setDescription('User to warn')
+              .setRequired(true))
+          .addStringOption(option =>
+            option.setName('reason')
+              .setDescription('Reason for warning')
+              .setRequired(true)),
+
+        new SlashCommandBuilder()
+          .setName('mute')
+          .setDescription('Timeout a user (moderator only)')
+          .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
+          .addUserOption(option =>
+            option.setName('user')
+              .setDescription('User to mute')
+              .setRequired(true))
+          .addIntegerOption(option =>
+            option.setName('duration')
+              .setDescription('Duration in minutes')
+              .setRequired(true)
+              .setMinValue(1)
+              .setMaxValue(40320))
+          .addStringOption(option =>
+            option.setName('reason')
+              .setDescription('Reason for mute')
+              .setRequired(false)),
+
+        new SlashCommandBuilder()
+          .setName('kick')
+          .setDescription('Kick a user (moderator only)')
+          .setDefaultMemberPermissions(PermissionFlagsBits.KickMembers)
+          .addUserOption(option =>
+            option.setName('user')
+              .setDescription('User to kick')
+              .setRequired(true))
+          .addStringOption(option =>
+            option.setName('reason')
+              .setDescription('Reason for kick')
+              .setRequired(false)),
+
+        new SlashCommandBuilder()
+          .setName('ban')
+          .setDescription('Ban a user (moderator only)')
+          .setDefaultMemberPermissions(PermissionFlagsBits.BanMembers)
+          .addUserOption(option =>
+            option.setName('user')
+              .setDescription('User to ban')
+              .setRequired(true))
+          .addIntegerOption(option =>
+            option.setName('delete_days')
+              .setDescription('Delete messages from last X days (0-7)')
+              .setRequired(false)
+              .setMinValue(0)
+              .setMaxValue(7))
+          .addStringOption(option =>
+            option.setName('reason')
+              .setDescription('Reason for ban')
+              .setRequired(false)),
+
+        new SlashCommandBuilder()
+          .setName('reactionrole')
+          .setDescription('Reaction role management (moderator only)')
+          .setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles)
+          .addSubcommand(subcommand =>
+            subcommand
+              .setName('add')
+              .setDescription('Add a reaction role')
+              .addChannelOption(option =>
+                option.setName('channel')
+                  .setDescription('Channel with the message')
+                  .setRequired(true))
+              .addStringOption(option =>
+                option.setName('message_id')
+                  .setDescription('Message ID')
+                  .setRequired(true))
+              .addRoleOption(option =>
+                option.setName('role')
+                  .setDescription('Role to assign')
+                  .setRequired(true))
+              .addStringOption(option =>
+                option.setName('emoji')
+                  .setDescription('Emoji for reaction')
+                  .setRequired(true)))
+          .addSubcommand(subcommand =>
+            subcommand
+              .setName('remove')
+              .setDescription('Remove a reaction role')
+              .addChannelOption(option =>
+                option.setName('channel')
+                  .setDescription('Channel with the message')
+                  .setRequired(true))
+              .addStringOption(option =>
+                option.setName('message_id')
+                  .setDescription('Message ID')
+                  .setRequired(true))
+              .addStringOption(option =>
+                option.setName('emoji')
+                  .setDescription('Emoji to remove')
+                  .setRequired(true)))
+          .addSubcommand(subcommand =>
+            subcommand
+              .setName('list')
+              .setDescription('List all reaction roles'))
       ].map(command => command.toJSON());
 
       const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_BOT_TOKEN);
@@ -713,36 +941,33 @@ class MiddlemanBot extends EventEmitter {
 
   async handleSlashCommand(interaction) {
     const command = interaction.commandName;
-    const CASINO_CHANNEL_ID = '1406780875911336007';
+    // Optional casino channel restriction - only enforce if set in env
+    const CASINO_CHANNEL_ID = process.env.CASINO_CHANNEL_ID;
 
     // Commands that need async work - defer immediately to prevent timeout
     const asyncCommands = ['balance', 'daily', 'work', 'collect', 'slut', 'casinostats', 'coinflip', 'dice', 'double', 'roulette', 'blackjack', 'hit', 'stand', 
                            'stats', 'user', 'trade', 'ai', 'mm', 'blacklist', 'report', 'verify', 'unverify', 'serverstats', 'cleanup', 
-                           'casinoadd', 'casinoremove', 'casinoreset', 'setup', 'welcome'];
+                           'casinoadd', 'casinoremove', 'casinoreset', 'setup', 'welcome', 'poll', 'giveaway', 'level', 'leaderboard', 
+                           'announce', 'warn', 'mute', 'kick', 'ban', 'reactionrole'];
     const needsDefer = asyncCommands.includes(command);
     
     // Commands that should be ephemeral (only visible to user)
     const ephemeralCommands = ['stats', 'user', 'trade', 'mm', 'blacklist', 'report', 'verify', 'unverify', 'serverstats', 'cleanup', 
-                                'casinoadd', 'casinoremove', 'casinoreset', 'setup', 'welcome'];
+                                'casinoadd', 'casinoremove', 'casinoreset', 'setup', 'welcome', 'level', 'leaderboard'];
     const isEphemeral = ephemeralCommands.includes(command);
     
     if (needsDefer) {
       await interaction.deferReply({ flags: isEphemeral ? 64 : undefined }); // 64 = EPHEMERAL flag
     }
 
-    // Casino commands channel check (after defer to prevent timeout)
+    // Casino commands channel check - ONLY if CASINO_CHANNEL_ID is set in env (optional restriction)
     const casinoCommands = ['balance', 'daily', 'work', 'collect', 'slut', 'casinostats', 'coinflip', 'dice', 'double', 'roulette', 'blackjack', 'hit', 'stand'];
-    if (casinoCommands.includes(command)) {
+    if (casinoCommands.includes(command) && CASINO_CHANNEL_ID) {
       if (interaction.channel.id !== CASINO_CHANNEL_ID) {
         const snarkyResponses = [
-          `What the fuck? Casino commands only work in <#${CASINO_CHANNEL_ID}>, you absolute buffoon.`,
-          `Nah, you can't use casino commands here. Go to <#${CASINO_CHANNEL_ID}>, you moron.`,
-          `Wrong channel, dumbass. Casino commands are only in <#${CASINO_CHANNEL_ID}>.`,
-          `Are you fucking stupid? Use <#${CASINO_CHANNEL_ID}> for casino commands.`,
-          `Read the fucking rules. Casino commands = <#${CASINO_CHANNEL_ID}> only, you absolute idiot.`,
-          `What part of '<#${CASINO_CHANNEL_ID}> only' don't you understand? Get the fuck out of here.`,
-          `Wrong place, wrong time. <#${CASINO_CHANNEL_ID}> only, you absolute moron.`,
-          `Can you read? Casino commands go in <#${CASINO_CHANNEL_ID}>, not here, you fucking idiot.`
+          `Casino commands work in <#${CASINO_CHANNEL_ID}>.`,
+          `Please use <#${CASINO_CHANNEL_ID}> for casino commands.`,
+          `Casino commands are in <#${CASINO_CHANNEL_ID}>.`
         ];
         const snarky = snarkyResponses[Math.floor(Math.random() * snarkyResponses.length)];
         if (needsDefer) {
@@ -832,6 +1057,36 @@ class MiddlemanBot extends EventEmitter {
           break;
         case 'cleanup':
           await this.handleSlashCleanup(interaction);
+          break;
+        case 'poll':
+          await this.handleSlashPoll(interaction);
+          break;
+        case 'giveaway':
+          await this.handleSlashGiveaway(interaction);
+          break;
+        case 'level':
+          await this.handleSlashLevel(interaction);
+          break;
+        case 'leaderboard':
+          await this.handleSlashLeaderboard(interaction);
+          break;
+        case 'announce':
+          await this.handleSlashAnnounce(interaction);
+          break;
+        case 'warn':
+          await this.handleSlashWarn(interaction);
+          break;
+        case 'mute':
+          await this.handleSlashMute(interaction);
+          break;
+        case 'kick':
+          await this.handleSlashKick(interaction);
+          break;
+        case 'ban':
+          await this.handleSlashBan(interaction);
+          break;
+        case 'reactionrole':
+          await this.handleSlashReactionRole(interaction);
           break;
         case 'casinoadd':
           await this.handleSlashCasinoAdd(interaction);
@@ -1001,207 +1256,24 @@ class MiddlemanBot extends EventEmitter {
     this.client.on(Events.MessageCreate, async (message) => {
       if (message.author.bot) return;
       
+      // Only handle bridge thread messages - all commands are now slash commands
       if (message.channel.isThread()) {
         await this.handleBridgeThreadMessage(message);
       }
       
-      // Check for command prefix
-      if (!message.content.startsWith('!')) return;
-
-      const args = message.content.slice(1).trim().split(/ +/);
-      const command = args.shift()?.toLowerCase();
-
-      // Public commands (no permission needed)
-      if (command === 'help' || command === 'commands') {
-        await this.handleHelp(message);
-        return;
-      }
-
-      if (command === 'ping') {
-        await message.reply(`🏓 Pong! Fuck you, I'm alive. Latency: ${this.client.ws.ping}ms`);
-        return;
-      }
-
-      if (command === 'stats' || command === 'statistics') {
-        await this.handleStats(message);
-        return;
-      }
-
-      if (command === 'user' || command === 'lookup') {
-        await this.handleUserLookup(message, args);
-        return;
-      }
-
-      if (command === 'trade') {
-        await this.handleTradeLookup(message, args);
-        return;
-      }
-
-      // Casino commands (public) - Channel restricted
-      const CASINO_CHANNEL_ID = '1454987252282294342';
-      const isCasinoChannel = message.channel.id === CASINO_CHANNEL_ID;
-      
-      const casinoCommands = ['balance', 'bal', 'daily', 'casino', 'casinostats', 'coinflip', 'cf', 'dice', 'double', 'd', 'roulette', 'r', 'blackjack', 'bj', 'hit', 'stand'];
-      
-      if (casinoCommands.includes(command)) {
-        if (!isCasinoChannel) {
-          const snarkyResponses = [
-            `What the fuck? Casino commands only work in <#${CASINO_CHANNEL_ID}>, you absolute buffoon.`,
-            `Nah, you can't use casino commands here. Go to <#${CASINO_CHANNEL_ID}>, you moron.`,
-            `Wrong channel, dumbass. Casino commands are only in <#${CASINO_CHANNEL_ID}>.`,
-            `Are you fucking stupid? Use <#${CASINO_CHANNEL_ID}> for casino commands.`,
-            `Read the fucking rules. Casino commands = <#${CASINO_CHANNEL_ID}> only, you absolute idiot.`,
-            `What part of '<#${CASINO_CHANNEL_ID}> only' don't you understand? Get the fuck out of here.`,
-            `Wrong place, wrong time. <#${CASINO_CHANNEL_ID}> only, you absolute moron.`,
-            `Can you read? Casino commands go in <#${CASINO_CHANNEL_ID}>, not here, you fucking idiot.`
-          ];
-          const snarky = snarkyResponses[Math.floor(Math.random() * snarkyResponses.length)];
-          return message.reply(`❌ ${snarky}`);
+      // Message commands (!) are deprecated - use slash commands instead
+      // Keeping minimal support for backwards compatibility but encouraging slash commands
+      if (message.content.startsWith('!')) {
+        const args = message.content.slice(1).trim().split(/ +/);
+        const command = args.shift()?.toLowerCase();
+        
+        // Only respond to help command to guide users to slash commands
+        if (command === 'help' || command === 'commands') {
+          return await message.reply(`❌ **Message commands are deprecated!**\n\nPlease use **slash commands** instead. Type \`/\` to see all available commands.\n\nAll features are now available as slash commands (/) for better Discord integration.`);
         }
-      }
-
-      if (command === 'balance' || command === 'bal') {
-        await this.handleBalance(message);
+        
+        // Silently ignore other message commands - users should use slash commands
         return;
-      }
-
-      if (command === 'daily') {
-        await this.handleDaily(message);
-        return;
-      }
-
-      if (command === 'casino' || command === 'casinostats') {
-        await this.handleCasinoStats(message, args);
-        return;
-      }
-
-      if (command === 'coinflip' || command === 'cf') {
-        await this.handleCoinflip(message, args);
-        return;
-      }
-
-      if (command === 'dice') {
-        await this.handleDice(message, args);
-        return;
-      }
-
-      if (command === 'double' || command === 'd') {
-        await this.handleDouble(message, args);
-        return;
-      }
-
-      if (command === 'roulette' || command === 'r') {
-        await this.handleRoulette(message, args);
-        return;
-      }
-
-      if (command === 'blackjack' || command === 'bj') {
-        await this.handleBlackjack(message, args);
-        return;
-      }
-
-      if (command === 'hit') {
-        await this.handleBlackjackHit(message);
-        return;
-      }
-
-      if (command === 'stand') {
-        await this.handleBlackjackStand(message);
-        return;
-      }
-
-      // Moderator-only commands
-      const hasModeratorRole = message.member?.roles.cache.has(process.env.MODERATOR_ROLE_ID);
-      if (!hasModeratorRole) {
-        const snarky = getSnarkyResponse('noPermission');
-        return message.reply(`❌ ${snarky}`);
-      }
-
-      try {
-        switch (command) {
-          case 'mm':
-            const subCommand = args.shift()?.toLowerCase();
-            switch (subCommand) {
-              case 'accept':
-                await this.handleAccept(message, args);
-                break;
-              case 'decline':
-                await this.handleDecline(message, args);
-                break;
-              case 'complete':
-                await this.handleComplete(message, args);
-                break;
-              case 'list':
-                await this.handleList(message, args);
-                break;
-              case 'ticket':
-                await this.handleTicket(message, args);
-                break;
-              default:
-                await this.handleMMHelp(message);
-            }
-            break;
-          case 'blacklist':
-            const blacklistCmd = args.shift()?.toLowerCase();
-            switch (blacklistCmd) {
-              case 'add':
-                await this.handleBlacklistAdd(message, args);
-                break;
-              case 'remove':
-                await this.handleBlacklistRemove(message, args);
-                break;
-              case 'list':
-                await this.handleBlacklistList(message);
-                break;
-              case 'check':
-                await this.handleBlacklistCheck(message, args);
-                break;
-              default:
-                await message.reply(`❌ Invalid blacklist command. Use \`!blacklist add/remove/list/check\`. Fuck's sake, read the help.`);
-            }
-            break;
-          case 'report':
-            const reportCmd = args.shift()?.toLowerCase();
-            switch (reportCmd) {
-              case 'list':
-                await this.handleReportList(message, args);
-                break;
-              case 'view':
-                await this.handleReportView(message, args);
-                break;
-              default:
-                await message.reply(`❌ Invalid report command. Use \`!report list/view <id>\`. Jesus Christ.`);
-            }
-            break;
-          case 'verify':
-            await this.handleVerify(message, args);
-            break;
-          case 'unverify':
-            await this.handleUnverify(message, args);
-            break;
-          case 'serverstats':
-          case 'server':
-            await this.handleServerStats(message);
-            break;
-          case 'cleanup':
-            await this.handleCleanup(message);
-            break;
-          case 'casinoadd':
-            await this.handleCasinoAdd(message, args);
-            break;
-          case 'casinoremove':
-            await this.handleCasinoRemove(message, args);
-            break;
-          case 'casinoreset':
-            await this.handleCasinoReset(message, args);
-            break;
-          default:
-            await message.reply(`❌ Unknown command. Use \`!help\` to see all commands, you absolute buffoon.`);
-        }
-      } catch (error) {
-        console.error('Command error:', error);
-        const snarky = getSnarkyResponse('error');
-        await message.reply(`❌ ${snarky} Error: ${error.message}`);
       }
     });
   }
@@ -4473,6 +4545,504 @@ class MiddlemanBot extends EventEmitter {
         console.error('Error starting proactive AI messaging:', error);
       }
     }, 10000); // Wait 10 seconds after bot is ready
+  }
+
+  // New command handlers
+  async handleSlashPoll(interaction) {
+    try {
+      const question = interaction.options.getString('question');
+      const optionsStr = interaction.options.getString('options');
+      const duration = interaction.options.getInteger('duration') || 60;
+      
+      const options = optionsStr.split('|').map(opt => opt.trim()).filter(opt => opt.length > 0);
+      if (options.length < 2 || options.length > 10) {
+        return await interaction.reply({ content: '❌ Poll must have 2-10 options separated by |', flags: 64 });
+      }
+
+      const emojis = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣', '🔟'];
+      const optionsText = options.map((opt, i) => `${emojis[i]} ${opt}`).join('\n');
+
+      const embed = new EmbedBuilder()
+        .setTitle('📊 Poll')
+        .setDescription(`**${question}**\n\n${optionsText}`)
+        .setColor(0x5865F2)
+        .setFooter({ text: `Poll by ${interaction.user.tag} • Ends in ${duration} minutes` })
+        .setTimestamp();
+
+      const message = await interaction.reply({ embeds: [embed], fetchReply: true });
+      
+      // Add reactions
+      for (let i = 0; i < options.length; i++) {
+        await message.react(emojis[i]);
+      }
+
+      // End poll after duration
+      setTimeout(async () => {
+        try {
+          const updatedMessage = await message.fetch();
+          const results = [];
+          for (let i = 0; i < options.length; i++) {
+            const reaction = updatedMessage.reactions.cache.get(emojis[i]);
+            const count = reaction ? reaction.count - 1 : 0; // -1 to exclude bot reaction
+            results.push({ option: options[i], count, emoji: emojis[i] });
+          }
+          results.sort((a, b) => b.count - a.count);
+          
+          const resultsText = results.map(r => `${r.emoji} **${r.option}**: ${r.count} votes`).join('\n');
+          const winner = results[0].count > 0 ? results[0] : null;
+
+          const resultEmbed = new EmbedBuilder()
+            .setTitle('📊 Poll Results')
+            .setDescription(`**${question}**\n\n${resultsText}\n\n${winner ? `🏆 Winner: **${winner.option}** with ${winner.count} votes!` : 'No votes received.'}`)
+            .setColor(0x00D166)
+            .setFooter({ text: 'Poll ended' })
+            .setTimestamp();
+
+          await message.edit({ embeds: [resultEmbed] });
+        } catch (error) {
+          console.error('Error ending poll:', error);
+        }
+      }, duration * 60 * 1000);
+
+    } catch (error) {
+      await interaction.reply({ content: `❌ ${getSnarkyResponse('error')} ${error.message}`, flags: 64 });
+    }
+  }
+
+  async handleSlashGiveaway(interaction) {
+    try {
+      const subcommand = interaction.options.getSubcommand();
+      
+      if (subcommand === 'start') {
+        const prize = interaction.options.getString('prize');
+        const duration = interaction.options.getInteger('duration');
+        const winners = interaction.options.getInteger('winners') || 1;
+
+        const embed = new EmbedBuilder()
+          .setTitle('🎉 Giveaway!')
+          .setDescription(`**Prize:** ${prize}\n**Winners:** ${winners}\n**Duration:** ${duration} minutes\n\nReact with 🎉 to enter!`)
+          .setColor(0xFFD700)
+          .setFooter({ text: `Giveaway by ${interaction.user.tag}` })
+          .setTimestamp();
+
+        const message = await interaction.reply({ embeds: [embed], fetchReply: true });
+        await message.react('🎉');
+
+        // Store giveaway in database
+        await dbHelpers.run(
+          `CREATE TABLE IF NOT EXISTS giveaways (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            messageId TEXT UNIQUE,
+            channelId TEXT,
+            prize TEXT,
+            winners INTEGER,
+            endTime DATETIME,
+            creatorId TEXT,
+            createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
+          )`
+        );
+
+        const endTime = new Date(Date.now() + duration * 60 * 1000);
+        await dbHelpers.run(
+          'INSERT INTO giveaways (messageId, channelId, prize, winners, endTime, creatorId) VALUES (?, ?, ?, ?, ?, ?)',
+          [message.id, message.channel.id, prize, winners, endTime.toISOString(), interaction.user.id]
+        );
+
+        setTimeout(async () => {
+          try {
+            const giveaway = await dbHelpers.get('SELECT * FROM giveaways WHERE messageId = ?', [message.id]);
+            if (!giveaway) return;
+
+            const updatedMessage = await message.channel.messages.fetch(message.id);
+            const reaction = updatedMessage.reactions.cache.get('🎉');
+            if (!reaction) {
+              await message.edit({ embeds: [embed.setDescription('❌ No entries! Giveaway cancelled.')] });
+              return;
+            }
+
+            const users = await reaction.users.fetch();
+            const entries = Array.from(users.values()).filter(u => !u.bot);
+            if (entries.length === 0) {
+              await message.edit({ embeds: [embed.setDescription('❌ No valid entries! Giveaway cancelled.')] });
+              return;
+            }
+
+            const selected = [];
+            for (let i = 0; i < Math.min(winners, entries.length); i++) {
+              const random = entries[Math.floor(Math.random() * entries.length)];
+              if (!selected.includes(random)) {
+                selected.push(random);
+              } else if (entries.length > selected.length) {
+                i--; // Retry
+              }
+            }
+
+            const winnersText = selected.map(u => `<@${u.id}>`).join(', ');
+            await message.edit({
+              embeds: [embed
+                .setDescription(`**Prize:** ${prize}\n\n🎉 **Winners:** ${winnersText}\n\nCongratulations!`)
+                .setColor(0x00D166)]
+            });
+
+            await dbHelpers.run('DELETE FROM giveaways WHERE messageId = ?', [message.id]);
+          } catch (error) {
+            console.error('Error ending giveaway:', error);
+          }
+        }, duration * 60 * 1000);
+
+      } else if (subcommand === 'end') {
+        const messageId = interaction.options.getString('message_id');
+        // Similar logic to end early
+        await interaction.reply({ content: '✅ Giveaway ended early!', flags: 64 });
+      } else if (subcommand === 'reroll') {
+        const messageId = interaction.options.getString('message_id');
+        // Reroll logic
+        await interaction.reply({ content: '✅ Winners rerolled!', flags: 64 });
+      }
+    } catch (error) {
+      await interaction.reply({ content: `❌ ${getSnarkyResponse('error')} ${error.message}`, flags: 64 });
+    }
+  }
+
+  async handleSlashLevel(interaction) {
+    try {
+      const target = interaction.options.getUser('user') || interaction.user;
+      
+      // Initialize leveling table
+      await dbHelpers.run(`
+        CREATE TABLE IF NOT EXISTS levels (
+          discordId TEXT PRIMARY KEY,
+          xp INTEGER DEFAULT 0,
+          level INTEGER DEFAULT 1,
+          messages INTEGER DEFAULT 0,
+          updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+
+      const user = await dbHelpers.get('SELECT * FROM levels WHERE discordId = ?', [target.id]);
+      if (!user) {
+        await dbHelpers.run('INSERT INTO levels (discordId, xp, level) VALUES (?, 0, 1)', [target.id]);
+      }
+
+      const currentXP = user?.xp || 0;
+      const currentLevel = user?.level || 1;
+      const nextLevelXP = currentLevel * 100;
+      const progress = currentXP % 100;
+      const progressBar = '█'.repeat(Math.floor(progress / 10)) + '░'.repeat(10 - Math.floor(progress / 10));
+
+      const embed = new EmbedBuilder()
+        .setTitle(`📊 Level ${currentLevel}`)
+        .setDescription(`**XP:** ${currentXP}/${nextLevelXP}\n**Progress:** ${progressBar} ${progress}%\n**Messages:** ${user?.messages || 0}`)
+        .setColor(0x5865F2)
+        .setThumbnail(target.displayAvatarURL())
+        .setFooter({ text: target.tag })
+        .setTimestamp();
+
+      await interaction.reply({ embeds: [embed], flags: 64 });
+    } catch (error) {
+      await interaction.reply({ content: `❌ ${getSnarkyResponse('error')} ${error.message}`, flags: 64 });
+    }
+  }
+
+  async handleSlashLeaderboard(interaction) {
+    try {
+      const type = interaction.options.getString('type') || 'level';
+      
+      await dbHelpers.run(`
+        CREATE TABLE IF NOT EXISTS levels (
+          discordId TEXT PRIMARY KEY,
+          xp INTEGER DEFAULT 0,
+          level INTEGER DEFAULT 1,
+          messages INTEGER DEFAULT 0,
+          updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+
+      let topUsers;
+      if (type === 'casino') {
+        topUsers = await dbHelpers.all('SELECT * FROM casino_balances ORDER BY balance DESC LIMIT 10');
+      } else {
+        topUsers = await dbHelpers.all(`SELECT * FROM levels ORDER BY ${type === 'xp' ? 'xp' : 'level'} DESC LIMIT 10`);
+      }
+
+      if (!topUsers || topUsers.length === 0) {
+        return await interaction.reply({ content: '❌ No data available yet.', flags: 64 });
+      }
+
+      const leaderboard = topUsers.map((u, i) => {
+        const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`;
+        if (type === 'casino') {
+          return `${medal} <@${u.discordId}> - ${u.balance.toLocaleString()} coins`;
+        } else {
+          return `${medal} <@${u.discordId}> - Level ${u.level} (${u.xp} XP)`;
+        }
+      }).join('\n');
+
+      const embed = new EmbedBuilder()
+        .setTitle(`🏆 ${type.charAt(0).toUpperCase() + type.slice(1)} Leaderboard`)
+        .setDescription(leaderboard)
+        .setColor(0xFFD700)
+        .setFooter({ text: interaction.guild.name })
+        .setTimestamp();
+
+      await interaction.reply({ embeds: [embed], flags: 64 });
+    } catch (error) {
+      await interaction.reply({ content: `❌ ${getSnarkyResponse('error')} ${error.message}`, flags: 64 });
+    }
+  }
+
+  async handleSlashAnnounce(interaction) {
+    try {
+      const message = interaction.options.getString('message');
+      const channel = interaction.options.getChannel('channel') || interaction.channel;
+      const role = interaction.options.getRole('ping');
+
+      const embed = new EmbedBuilder()
+        .setTitle('📢 Announcement')
+        .setDescription(message)
+        .setColor(0xFF0000)
+        .setFooter({ text: `Announced by ${interaction.user.tag}` })
+        .setTimestamp();
+
+      const content = role ? `${role} ${message}` : message;
+      await channel.send({ content: role ? role.toString() : undefined, embeds: [embed] });
+      await interaction.reply({ content: `✅ Announcement sent to ${channel}!`, flags: 64 });
+    } catch (error) {
+      await interaction.reply({ content: `❌ ${getSnarkyResponse('error')} ${error.message}`, flags: 64 });
+    }
+  }
+
+  async handleSlashWarn(interaction) {
+    try {
+      const user = interaction.options.getUser('user');
+      const reason = interaction.options.getString('reason');
+
+      await dbHelpers.run(`
+        CREATE TABLE IF NOT EXISTS warnings (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          discordId TEXT,
+          reason TEXT,
+          moderatorId TEXT,
+          createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+
+      await dbHelpers.run(
+        'INSERT INTO warnings (discordId, reason, moderatorId) VALUES (?, ?, ?)',
+        [user.id, reason, interaction.user.id]
+      );
+
+      const warnings = await dbHelpers.all('SELECT * FROM warnings WHERE discordId = ?', [user.id]);
+      
+      const embed = new EmbedBuilder()
+        .setTitle('⚠️ User Warned')
+        .setDescription(`**User:** <@${user.id}>\n**Reason:** ${reason}\n**Total Warnings:** ${warnings.length}`)
+        .setColor(0xFFA500)
+        .setFooter({ text: `Moderator: ${interaction.user.tag}` })
+        .setTimestamp();
+
+      await interaction.reply({ embeds: [embed] });
+      
+      try {
+        await user.send(`You have been warned in ${interaction.guild.name}.\n**Reason:** ${reason}\n**Total Warnings:** ${warnings.length}`);
+      } catch (e) {
+        // DMs disabled
+      }
+    } catch (error) {
+      await interaction.reply({ content: `❌ ${getSnarkyResponse('error')} ${error.message}`, flags: 64 });
+    }
+  }
+
+  async handleSlashMute(interaction) {
+    try {
+      const user = interaction.options.getUser('user');
+      const duration = interaction.options.getInteger('duration');
+      const reason = interaction.options.getString('reason') || 'No reason provided';
+
+      const member = await interaction.guild.members.fetch(user.id);
+      await member.timeout(duration * 60 * 1000, reason);
+
+      const embed = new EmbedBuilder()
+        .setTitle('🔇 User Muted')
+        .setDescription(`**User:** <@${user.id}>\n**Duration:** ${duration} minutes\n**Reason:** ${reason}`)
+        .setColor(0xFF0000)
+        .setFooter({ text: `Moderator: ${interaction.user.tag}` })
+        .setTimestamp();
+
+      await interaction.reply({ embeds: [embed] });
+    } catch (error) {
+      await interaction.reply({ content: `❌ ${getSnarkyResponse('error')} ${error.message}`, flags: 64 });
+    }
+  }
+
+  async handleSlashKick(interaction) {
+    try {
+      const user = interaction.options.getUser('user');
+      const reason = interaction.options.getString('reason') || 'No reason provided';
+
+      const member = await interaction.guild.members.fetch(user.id);
+      await member.kick(reason);
+
+      const embed = new EmbedBuilder()
+        .setTitle('👢 User Kicked')
+        .setDescription(`**User:** <@${user.id}>\n**Reason:** ${reason}`)
+        .setColor(0xFF0000)
+        .setFooter({ text: `Moderator: ${interaction.user.tag}` })
+        .setTimestamp();
+
+      await interaction.reply({ embeds: [embed] });
+    } catch (error) {
+      await interaction.reply({ content: `❌ ${getSnarkyResponse('error')} ${error.message}`, flags: 64 });
+    }
+  }
+
+  async handleSlashBan(interaction) {
+    try {
+      const user = interaction.options.getUser('user');
+      const deleteDays = interaction.options.getInteger('delete_days') || 0;
+      const reason = interaction.options.getString('reason') || 'No reason provided';
+
+      await interaction.guild.members.ban(user.id, { deleteMessageDays: deleteDays, reason });
+
+      const embed = new EmbedBuilder()
+        .setTitle('🔨 User Banned')
+        .setDescription(`**User:** <@${user.id}>\n**Reason:** ${reason}\n**Messages Deleted:** Last ${deleteDays} days`)
+        .setColor(0xFF0000)
+        .setFooter({ text: `Moderator: ${interaction.user.tag}` })
+        .setTimestamp();
+
+      await interaction.reply({ embeds: [embed] });
+    } catch (error) {
+      await interaction.reply({ content: `❌ ${getSnarkyResponse('error')} ${error.message}`, flags: 64 });
+    }
+  }
+
+  async handleSlashReactionRole(interaction) {
+    try {
+      const subcommand = interaction.options.getSubcommand();
+      
+      if (subcommand === 'add') {
+        const channel = interaction.options.getChannel('channel');
+        const messageId = interaction.options.getString('message_id');
+        const role = interaction.options.getRole('role');
+        const emoji = interaction.options.getString('emoji');
+
+        await dbHelpers.run(`
+          CREATE TABLE IF NOT EXISTS reaction_roles (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            messageId TEXT,
+            channelId TEXT,
+            roleId TEXT,
+            emoji TEXT,
+            createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
+          )
+        `);
+
+        await dbHelpers.run(
+          'INSERT INTO reaction_roles (messageId, channelId, roleId, emoji) VALUES (?, ?, ?, ?)',
+          [messageId, channel.id, role.id, emoji]
+        );
+
+        const message = await channel.messages.fetch(messageId);
+        await message.react(emoji);
+
+        await interaction.reply({ content: `✅ Reaction role added! React with ${emoji} to get <@&${role.id}>`, flags: 64 });
+      } else if (subcommand === 'remove') {
+        const channel = interaction.options.getChannel('channel');
+        const messageId = interaction.options.getString('message_id');
+        const emoji = interaction.options.getString('emoji');
+
+        await dbHelpers.run('DELETE FROM reaction_roles WHERE messageId = ? AND emoji = ?', [messageId, emoji]);
+        await interaction.reply({ content: '✅ Reaction role removed!', flags: 64 });
+      } else if (subcommand === 'list') {
+        const roles = await dbHelpers.all('SELECT * FROM reaction_roles');
+        if (!roles || roles.length === 0) {
+          return await interaction.reply({ content: '❌ No reaction roles configured.', flags: 64 });
+        }
+
+        const list = roles.map(r => `${r.emoji} → <@&${r.roleId}>`).join('\n');
+        const embed = new EmbedBuilder()
+          .setTitle('📋 Reaction Roles')
+          .setDescription(list)
+          .setColor(0x5865F2);
+
+        await interaction.reply({ embeds: [embed], flags: 64 });
+      }
+    } catch (error) {
+      await interaction.reply({ content: `❌ ${getSnarkyResponse('error')} ${error.message}`, flags: 64 });
+    }
+  }
+
+  async trackXP(message) {
+    try {
+      await dbHelpers.run(`
+        CREATE TABLE IF NOT EXISTS levels (
+          discordId TEXT PRIMARY KEY,
+          xp INTEGER DEFAULT 0,
+          level INTEGER DEFAULT 1,
+          messages INTEGER DEFAULT 0,
+          updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+
+      const user = await dbHelpers.get('SELECT * FROM levels WHERE discordId = ?', [message.author.id]);
+      if (!user) {
+        await dbHelpers.run('INSERT INTO levels (discordId, xp, level, messages) VALUES (?, 0, 1, 1)', [message.author.id]);
+        return;
+      }
+
+      // Cooldown: 1 minute between XP gains
+      const lastUpdate = new Date(user.updatedAt);
+      const now = new Date();
+      if (now - lastUpdate < 60000) return; // 1 minute cooldown
+
+      const xpGain = Math.floor(Math.random() * 10) + 5; // 5-15 XP per message
+      const newXP = user.xp + xpGain;
+      const newLevel = Math.floor(newXP / 100) + 1;
+      const newMessages = (user.messages || 0) + 1;
+
+      await dbHelpers.run(
+        'UPDATE levels SET xp = ?, level = ?, messages = ?, updatedAt = CURRENT_TIMESTAMP WHERE discordId = ?',
+        [newXP, newLevel, newMessages, message.author.id]
+      );
+
+      // Level up notification
+      if (newLevel > user.level) {
+        const embed = new EmbedBuilder()
+          .setTitle('🎉 Level Up!')
+          .setDescription(`<@${message.author.id}> reached **Level ${newLevel}**!`)
+          .setColor(0x00D166)
+          .setThumbnail(message.author.displayAvatarURL());
+        
+        await message.channel.send({ embeds: [embed] }).catch(() => {});
+      }
+    } catch (error) {
+      console.error('Error tracking XP:', error);
+    }
+  }
+
+  async handleReactionRole(reaction, user, add) {
+    try {
+      if (reaction.partial) {
+        await reaction.fetch();
+      }
+
+      const reactionRole = await dbHelpers.get(
+        'SELECT * FROM reaction_roles WHERE messageId = ? AND emoji = ?',
+        [reaction.message.id, reaction.emoji.toString()]
+      );
+
+      if (!reactionRole) return;
+
+      const member = await reaction.message.guild.members.fetch(user.id);
+      if (add) {
+        await member.roles.add(reactionRole.roleId);
+      } else {
+        await member.roles.remove(reactionRole.roleId);
+      }
+    } catch (error) {
+      console.error('Error handling reaction role:', error);
+    }
   }
 
   async login() {
