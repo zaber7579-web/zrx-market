@@ -5354,35 +5354,57 @@ class MiddlemanBot extends EventEmitter {
       const verifyMessage = await channel.send({ embeds: [verifyEmbed] });
       await verifyMessage.react('✅');
 
-      // Store verification reaction role if role provided
-      if (verifyRole) {
-        await dbHelpers.run(`
-          CREATE TABLE IF NOT EXISTS reaction_roles (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            messageId TEXT,
-            channelId TEXT,
-            roleId TEXT,
-            emoji TEXT,
-            createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
-          )
-        `);
+      // Initialize reaction_roles table (will be used for all roles)
+      await dbHelpers.run(`
+        CREATE TABLE IF NOT EXISTS reaction_roles (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          messageId TEXT,
+          channelId TEXT,
+          roleId TEXT,
+          emoji TEXT,
+          createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
 
-        await dbHelpers.run(
-          'INSERT INTO reaction_roles (messageId, channelId, roleId, emoji) VALUES (?, ?, ?, ?)',
-          [verifyMessage.id, channel.id, verifyRole.id, '✅']
-        );
+      // Store verification reaction role
+      const roleToLink = verifyRole || interaction.guild.roles.cache.find(
+        r => r.name.toLowerCase() === 'verified' || r.name === '✅ Verified'
+      );
+      
+      if (roleToLink) {
+        try {
+          await dbHelpers.run(
+            'INSERT INTO reaction_roles (messageId, channelId, roleId, emoji) VALUES (?, ?, ?, ?)',
+            [verifyMessage.id, channel.id, roleToLink.id, '✅']
+          );
+          console.log(`✅ Linked ✅ to ${roleToLink.name} role`);
+        } catch (error) {
+          console.error('Error linking verified role:', error);
+        }
       }
 
       // Wait a bit before sending next message
       await new Promise(resolve => setTimeout(resolve, 1000));
 
-      // Create role selection messages similar to Carl-bot style
+      // Initialize reaction_roles table
+      await dbHelpers.run(`
+        CREATE TABLE IF NOT EXISTS reaction_roles (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          messageId TEXT,
+          channelId TEXT,
+          roleId TEXT,
+          emoji TEXT,
+          createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+
+      // Create role selection messages and automatically link roles
       const roleMessages = [
         {
           title: 'Gender Roles',
           description: '**@she/her** ✨\n**@he/him** ✨\n**@they/them** ➗\n**@other** ➗',
           emojis: ['💗', '💙', '💜', '🤍'],
-          roles: ['she/her', 'he/him', 'they/them', 'other'] // These should be role names - user will need to configure actual role IDs
+          roles: ['she/her', 'he/him', 'they/them', 'other']
         },
         {
           title: 'Age',
@@ -5405,6 +5427,8 @@ class MiddlemanBot extends EventEmitter {
       ];
 
       const createdMessages = [verifyMessage.id];
+      let linkedRoles = 0;
+      let missingRoles = [];
 
       for (const roleMsg of roleMessages) {
         const embed = new EmbedBuilder()
@@ -5416,20 +5440,75 @@ class MiddlemanBot extends EventEmitter {
         const message = await channel.send({ embeds: [embed] });
         createdMessages.push(message.id);
 
-        // Add reactions
-        for (const emoji of roleMsg.emojis) {
+        // Add reactions and link to roles
+        for (let i = 0; i < roleMsg.emojis.length; i++) {
+          const emoji = roleMsg.emojis[i];
+          const roleName = roleMsg.roles[i];
+          
+          // Find role by name (case-insensitive)
+          const role = interaction.guild.roles.cache.find(
+            r => r.name.toLowerCase() === roleName.toLowerCase()
+          );
+          
           await message.react(emoji);
+          
+          // If role exists, automatically link it
+          if (role) {
+            try {
+              await dbHelpers.run(
+                'INSERT INTO reaction_roles (messageId, channelId, roleId, emoji) VALUES (?, ?, ?, ?)',
+                [message.id, channel.id, role.id, emoji]
+              );
+              linkedRoles++;
+              console.log(`✅ Linked ${emoji} to role ${role.name} (${role.id})`);
+            } catch (error) {
+              console.error(`Error linking role ${roleName}:`, error);
+              missingRoles.push(`${emoji} ${roleName}`);
+            }
+          } else {
+            missingRoles.push(`${emoji} ${roleName}`);
+          }
         }
 
-        // Store reaction roles (user will need to map role names to actual role IDs using /reactionrole add)
-        // We'll just add placeholders for now
         await new Promise(resolve => setTimeout(resolve, 500));
       }
 
+      // If verify role wasn't provided but exists, try to find and link it
+      if (!verifyRole) {
+        const verifiedRole = interaction.guild.roles.cache.find(
+          r => r.name.toLowerCase() === 'verified' || r.name === '✅ Verified'
+        );
+        if (verifiedRole) {
+          try {
+            await dbHelpers.run(
+              'INSERT INTO reaction_roles (messageId, channelId, roleId, emoji) VALUES (?, ?, ?, ?)',
+              [verifyMessage.id, channel.id, verifiedRole.id, '✅']
+            );
+            console.log(`✅ Linked ✅ to Verified role automatically`);
+          } catch (error) {
+            console.error('Error linking verified role:', error);
+          }
+        }
+      }
+
+      let description = `Sent ${createdMessages.length} messages to <#${channel.id}>\n\n`;
+      
+      if (linkedRoles > 0) {
+        description += `✅ **Automatically linked ${linkedRoles} reaction roles!**\n\n`;
+      }
+      
+      if (missingRoles.length > 0) {
+        description += `⚠️ **Roles not found (create them with \`/setup\` or link manually):**\n${missingRoles.join(', ')}\n\nUse \`/reactionrole add\` to link these manually.\n\n`;
+      } else {
+        description += `✅ **All roles linked automatically!**\n\n`;
+      }
+      
+      description += `**Testing:**\n• React to messages to get roles\n• Verified role unlocks all channels`;
+
       const resultEmbed = new EmbedBuilder()
         .setTitle('✅ Verification Setup Complete!')
-        .setDescription(`Sent ${createdMessages.length} messages to <#${channel.id}>\n\n**Next Steps:**\n1. Use \`/reactionrole add\` to link emojis to actual roles\n2. Make sure the verify role has proper channel permissions\n3. Test by reacting to the messages`)
-        .setColor(0x00D166)
+        .setDescription(description)
+        .setColor(missingRoles.length > 0 ? 0xFFA500 : 0x00D166)
         .setFooter({ text: `Setup by: ${interaction.user.tag}` })
         .setTimestamp();
 
