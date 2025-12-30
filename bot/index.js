@@ -203,7 +203,7 @@ class MiddlemanBot extends EventEmitter {
 
         // Default welcome message (matching the style from the old server)
         if (!welcomeMessage) {
-          welcomeMessage = `hello welcome to miss death are server is run by me (alli) and juli !! hope you have a good time in are server !`;
+          welcomeMessage = `hello welcome to miss death are server is run by me (alli) !! hope you have a good time in are server !`;
         }
 
         // Replace placeholders in message
