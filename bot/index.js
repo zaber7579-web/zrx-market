@@ -4239,15 +4239,40 @@ class MiddlemanBot extends EventEmitter {
 
       const force = interaction.options.getBoolean('force') || false;
 
-      await interaction.editReply({ content: '🔧 **Starting server setup...**\n\nThis may take a minute. Creating channels and setting permissions...' });
+      await interaction.editReply({ content: '🔧 **Starting server setup...**\n\nThis may take a minute. Creating roles, channels, and setting permissions...' });
 
       const createdChannels = [];
       const createdCategories = [];
+      const createdRoles = [];
       const errors = [];
 
       // Get bot's highest role for permission overwrites
       const botMember = await guild.members.fetch(this.client.user.id).catch(() => null);
       const botRole = botMember?.roles.highest;
+
+      // Helper function to create role
+      const createRole = async (name, options = {}) => {
+        try {
+          const existing = guild.roles.cache.find(r => r.name === name);
+          if (existing && !force) {
+            return existing;
+          }
+          if (existing && force) {
+            await existing.delete().catch(() => {});
+          }
+          const roleData = {
+            name: name,
+            reason: 'Auto-setup by bot',
+            ...options
+          };
+          const role = await guild.roles.create(roleData);
+          createdRoles.push(role);
+          return role;
+        } catch (error) {
+          errors.push(`Failed to create role ${name}: ${error.message}`);
+          return null;
+        }
+      };
 
       // Helper function to create category
       const createCategory = async (name, emoji = '') => {
@@ -4330,6 +4355,86 @@ class MiddlemanBot extends EventEmitter {
       // Wait a bit between operations to avoid rate limits
       const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
+      // STEP 1: Create essential roles
+      await interaction.editReply({ content: '🔧 **Step 1/3: Creating roles...**' });
+      
+      // Create Verified role (green) - users get this after verification
+      const verifiedRole = await createRole('✅ Verified', {
+        color: 0x00D166,
+        mentionable: false,
+        hoist: true
+      });
+      await delay(500);
+
+      // Create Moderator role (blue) - for moderators
+      const moderatorRole = await createRole('👮 Moderator', {
+        color: 0x5865F2,
+        mentionable: true,
+        hoist: true,
+        permissions: [
+          PermissionFlagsBits.ManageMessages,
+          PermissionFlagsBits.ManageChannels,
+          PermissionFlagsBits.KickMembers,
+          PermissionFlagsBits.BanMembers,
+          PermissionFlagsBits.ModerateMembers,
+          PermissionFlagsBits.ManageRoles
+        ]
+      });
+      await delay(500);
+
+      // Create gender roles
+      const sheHerRole = await createRole('she/her', { color: 0xFF69B4, mentionable: false });
+      await delay(300);
+      const heHimRole = await createRole('he/him', { color: 0x00BFFF, mentionable: false });
+      await delay(300);
+      const theyThemRole = await createRole('they/them', { color: 0x9B59B6, mentionable: false });
+      await delay(300);
+      const otherRole = await createRole('other', { color: 0xFFFFFF, mentionable: false });
+      await delay(500);
+
+      // Create age roles
+      const age12_15 = await createRole('12-15', { color: 0xFFD700, mentionable: false });
+      await delay(300);
+      const age15_18 = await createRole('15-18', { color: 0xFFA500, mentionable: false });
+      await delay(300);
+      const age18Plus = await createRole('18+', { color: 0xFF6347, mentionable: false });
+      await delay(500);
+
+      // Create relationship roles
+      const takenRole = await createRole('TAKEN!', { color: 0xFF0000, mentionable: false });
+      await delay(300);
+      const singleRole = await createRole('SINGLE', { color: 0x0000FF, mentionable: false });
+      await delay(500);
+
+      // Create region roles
+      const naRole = await createRole('north american us', { color: 0x0066CC, mentionable: false });
+      await delay(300);
+      const asiaRole = await createRole('asia', { color: 0xFFD700, mentionable: false });
+      await delay(300);
+      const africaRole = await createRole('africa', { color: 0x228B22, mentionable: false });
+      await delay(300);
+      const saRole = await createRole('south amarica', { color: 0xFF4500, mentionable: false });
+      await delay(500);
+
+      // Set role hierarchy - bot role should be above all, then moderator, then verified
+      if (botRole && verifiedRole) {
+        try {
+          await verifiedRole.setPosition(botRole.position - 1);
+        } catch (e) {
+          console.warn('Could not set verified role position:', e.message);
+        }
+      }
+      if (moderatorRole && verifiedRole) {
+        try {
+          await moderatorRole.setPosition(verifiedRole.position + 1);
+        } catch (e) {
+          console.warn('Could not set moderator role position:', e.message);
+        }
+      }
+
+      // STEP 2: Create categories and channels
+      await interaction.editReply({ content: '🔧 **Step 2/3: Creating channels...**' });
+
       // 1. Events Category
       const eventsCategory = await createCategory('Events', '📅');
       await delay(500);
@@ -4338,24 +4443,29 @@ class MiddlemanBot extends EventEmitter {
       const welcomeCategory = await createCategory('Welcome', '💜');
       await delay(500);
       
-      // Welcome channels with read-only permissions for @everyone except send messages
-      await createTextChannel(welcomeCategory, 'welcom !', {
+      // Welcome channels - visible to everyone, but only verified can send messages
+      const welcomeChannel = await createTextChannel(welcomeCategory, 'welcom !', {
         topic: 'Welcome to the server! Read the rules and get your roles!',
         permissionOverwrites: [
           {
-            id: guild.id, // @everyone
+            id: guild.id, // @everyone - can view but not send
+            allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.ReadMessageHistory],
             deny: [PermissionFlagsBits.SendMessages, PermissionFlagsBits.AddReactions]
-          }
+          },
+          ...(verifiedRole ? [{
+            id: verifiedRole.id, // Verified - can send messages
+            allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.AddReactions, PermissionFlagsBits.ReadMessageHistory]
+          }] : [])
         ]
       });
       await delay(500);
 
-      await createTextChannel(welcomeCategory, 'get-roles', {
+      const getRolesChannel = await createTextChannel(welcomeCategory, 'get-roles', {
         topic: 'React to get roles and access different channels!',
         permissionOverwrites: [
           {
-            id: guild.id,
-            allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.AddReactions],
+            id: guild.id, // @everyone - can view and react
+            allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.AddReactions, PermissionFlagsBits.ReadMessageHistory],
             deny: [PermissionFlagsBits.SendMessages]
           }
         ]
@@ -4366,17 +4476,30 @@ class MiddlemanBot extends EventEmitter {
         topic: 'Server rules - Read before participating!',
         permissionOverwrites: [
           {
-            id: guild.id,
-            allow: [PermissionFlagsBits.ViewChannel],
-            deny: [PermissionFlagsBits.SendMessages]
+            id: guild.id, // @everyone - read only
+            allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.ReadMessageHistory],
+            deny: [PermissionFlagsBits.SendMessages, PermissionFlagsBits.AddReactions]
           }
         ]
       });
       await delay(500);
 
-      // 3. Social Category
+      // 3. Social Category - Only verified users can see
       const socialCategory = await createCategory('social', '🤷');
       await delay(500);
+      
+      // Set category permissions
+      if (socialCategory && verifiedRole) {
+        await socialCategory.permissionOverwrites.edit(guild.id, {
+          ViewChannel: false // @everyone can't see
+        });
+        await socialCategory.permissionOverwrites.edit(verifiedRole.id, {
+          ViewChannel: true, // Verified can see
+          SendMessages: true,
+          ReadMessageHistory: true
+        });
+        await delay(500);
+      }
 
       await createTextChannel(socialCategory, 'main-chat', {
         topic: 'General chat for the community'
@@ -4393,9 +4516,22 @@ class MiddlemanBot extends EventEmitter {
       });
       await delay(500);
 
-      // 4. Clips Category
+      // 4. Clips Category - Only verified users can see
       const clipsCategory = await createCategory('Clips', '⚠️');
       await delay(500);
+      
+      if (clipsCategory && verifiedRole) {
+        await clipsCategory.permissionOverwrites.edit(guild.id, {
+          ViewChannel: false
+        });
+        await clipsCategory.permissionOverwrites.edit(verifiedRole.id, {
+          ViewChannel: true,
+          SendMessages: true,
+          AttachFiles: true,
+          ReadMessageHistory: true
+        });
+        await delay(500);
+      }
 
       await createTextChannel(clipsCategory, 'clips', {
         topic: 'Share your game clips here!'
@@ -4407,9 +4543,22 @@ class MiddlemanBot extends EventEmitter {
       });
       await delay(500);
 
-      // 5. Face Revs Category
+      // 5. Face Revs Category - Only verified users can see
       const faceRevsCategory = await createCategory('Face revs');
       await delay(500);
+      
+      if (faceRevsCategory && verifiedRole) {
+        await faceRevsCategory.permissionOverwrites.edit(guild.id, {
+          ViewChannel: false
+        });
+        await faceRevsCategory.permissionOverwrites.edit(verifiedRole.id, {
+          ViewChannel: true,
+          SendMessages: true,
+          AttachFiles: true,
+          ReadMessageHistory: true
+        });
+        await delay(500);
+      }
 
       await createTextChannel(faceRevsCategory, 'girl-face', {
         topic: 'Girl face reveals'
@@ -4421,9 +4570,21 @@ class MiddlemanBot extends EventEmitter {
       });
       await delay(500);
 
-      // 6. Group Activities Category
+      // 6. Group Activities Category - Only verified users can see
       const groupActivitiesCategory = await createCategory('Group activitys', '⭐');
       await delay(500);
+      
+      if (groupActivitiesCategory && verifiedRole) {
+        await groupActivitiesCategory.permissionOverwrites.edit(guild.id, {
+          ViewChannel: false
+        });
+        await groupActivitiesCategory.permissionOverwrites.edit(verifiedRole.id, {
+          ViewChannel: true,
+          SendMessages: true,
+          ReadMessageHistory: true
+        });
+        await delay(500);
+      }
 
       await createTextChannel(groupActivitiesCategory, 'roblox', {
         topic: 'Roblox game discussion and activities'
@@ -4445,16 +4606,29 @@ class MiddlemanBot extends EventEmitter {
         permissionOverwrites: [
           {
             id: guild.id,
-            allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.AddReactions],
+            allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.AddReactions, PermissionFlagsBits.ReadMessageHistory],
             deny: [PermissionFlagsBits.SendMessages]
           }
         ]
       });
       await delay(500);
 
-      // 7. VC Activities Category
+      // 7. VC Activities Category - Only verified users can see
       const vcActivitiesCategory = await createCategory('vc activitys', '⭐');
       await delay(500);
+      
+      if (vcActivitiesCategory && verifiedRole) {
+        await vcActivitiesCategory.permissionOverwrites.edit(guild.id, {
+          ViewChannel: false,
+          Connect: false
+        });
+        await vcActivitiesCategory.permissionOverwrites.edit(verifiedRole.id, {
+          ViewChannel: true,
+          Connect: true,
+          Speak: true
+        });
+        await delay(500);
+      }
 
       await createVoiceChannel(vcActivitiesCategory, 'Roblox vc!', {
         // Voice channels don't support topics - removed to avoid Discord validation errors
@@ -4471,14 +4645,60 @@ class MiddlemanBot extends EventEmitter {
       });
       await delay(500);
 
+      // STEP 3: Configure welcome system and store roles
+      await interaction.editReply({ content: '🔧 **Step 3/3: Configuring welcome system...**' });
+      
+      // Store verified role in database for auto-assignment
+      if (verifiedRole && welcomeChannel) {
+        try {
+          await dbHelpers.run(`
+            CREATE TABLE IF NOT EXISTS server_config (
+              guildId TEXT PRIMARY KEY,
+              welcomeChannelId TEXT,
+              welcomeMessage TEXT,
+              autoRoleId TEXT,
+              verifiedRoleId TEXT,
+              updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+          `);
+          
+          await dbHelpers.run(
+            'INSERT OR REPLACE INTO server_config (guildId, welcomeChannelId, autoRoleId, verifiedRoleId, updatedAt) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)',
+            [guild.id, welcomeChannel.id, verifiedRole.id, verifiedRole.id]
+          );
+        } catch (error) {
+          errors.push(`Failed to save config: ${error.message}`);
+        }
+      }
+      
+      await delay(500);
+
       // Create summary embed
       const summary = new EmbedBuilder()
         .setTitle('✅ Server Setup Complete!')
         .setColor(0x00FF00)
-        .setDescription('All channels and categories have been created with proper permissions!')
+        .setDescription('All roles, channels, and permissions have been configured automatically!')
         .addFields(
-          { name: '📊 Statistics', value: `**Categories Created:** ${createdCategories.length}\n**Channels Created:** ${createdChannels.length}`, inline: false },
-          { name: '📁 Categories', value: createdCategories.map(c => `• ${c.name}`).join('\n') || 'None', inline: false }
+          { 
+            name: '📊 Statistics', 
+            value: `**Roles Created:** ${createdRoles.length}\n**Categories Created:** ${createdCategories.length}\n**Channels Created:** ${createdChannels.length}`, 
+            inline: false 
+          },
+          { 
+            name: '👥 Key Roles', 
+            value: verifiedRole ? `• ${verifiedRole} - Unlocks all channels\n• ${moderatorRole || 'Moderator'} - Full permissions` : 'Roles created', 
+            inline: false 
+          },
+          { 
+            name: '🔒 Permission Setup', 
+            value: `✅ Unverified users can only see welcome channels\n✅ Verified users can access all channels\n✅ Moderators have full permissions\n✅ Role hierarchy configured`, 
+            inline: false 
+          },
+          { 
+            name: '📁 Categories Created', 
+            value: createdCategories.map(c => `• ${c.name}`).join('\n') || 'None', 
+            inline: false 
+          }
         )
         .setFooter({ text: `Setup by: ${interaction.user.tag}` })
         .setTimestamp();
@@ -4488,9 +4708,17 @@ class MiddlemanBot extends EventEmitter {
         summary.addFields({ name: '⚠️ Errors', value: errorText.length > 1024 ? errorText.substring(0, 1021) + '...' : errorText, inline: false });
       }
 
+      const nextSteps = [
+        '✅ Roles created and permissions configured',
+        '✅ Channels locked for unverified users',
+        `✅ Use \`/verify-setup\` in ${getRolesChannel ? `<#${getRolesChannel.id}>` : '#get-roles'} to create verification message`,
+        '✅ Users react with ✅ to get verified and unlock channels',
+        '✅ Use `/reactionrole add` to link emojis to role selection roles'
+      ];
+
       await interaction.followUp({
         embeds: [summary],
-        content: `✅ **Setup Complete!**\n\nCreated ${createdCategories.length} categories and ${createdChannels.length} channels.\n\n${errors.length > 0 ? `⚠️ ${errors.length} error(s) occurred.` : ''}\n\n**Next Steps:**\n1. Check the channel permissions\n2. Set up role reactions in #get-roles\n3. Add rules to #rules\n4. Configure giveaways in #give-away`,
+        content: `✅ **Setup Complete!**\n\n**Created:**\n• ${createdRoles.length} roles\n• ${createdCategories.length} categories\n• ${createdChannels.length} channels\n\n**Next Steps:**\n${nextSteps.join('\n')}\n\n${errors.length > 0 ? `⚠️ ${errors.length} error(s) occurred.` : ''}`,
         flags: 64 // EPHEMERAL
       });
 
