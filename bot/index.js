@@ -5299,21 +5299,35 @@ class MiddlemanBot extends EventEmitter {
         await reaction.fetch();
       }
 
+      // Handle both emoji object and string representation
+      const emojiString = reaction.emoji.id ? `<:${reaction.emoji.name}:${reaction.emoji.id}>` : reaction.emoji.name;
+      
       const reactionRole = await dbHelpers.get(
-        'SELECT * FROM reaction_roles WHERE messageId = ? AND emoji = ?',
-        [reaction.message.id, reaction.emoji.toString()]
+        'SELECT * FROM reaction_roles WHERE messageId = ? AND (emoji = ? OR emoji = ?)',
+        [reaction.message.id, emojiString, reaction.emoji.name]
       );
 
-      if (!reactionRole) return;
+      if (!reactionRole) {
+        console.log(`No reaction role found for message ${reaction.message.id}, emoji: ${emojiString} or ${reaction.emoji.name}`);
+        return;
+      }
 
       const member = await reaction.message.guild.members.fetch(user.id);
       if (add) {
         await member.roles.add(reactionRole.roleId);
+        console.log(`✅ Added role ${reactionRole.roleId} to ${user.tag}`);
       } else {
         await member.roles.remove(reactionRole.roleId);
+        console.log(`✅ Removed role ${reactionRole.roleId} from ${user.tag}`);
       }
     } catch (error) {
       console.error('Error handling reaction role:', error);
+      console.error('Reaction details:', {
+        messageId: reaction.message.id,
+        emoji: reaction.emoji.name,
+        emojiId: reaction.emoji.id,
+        userId: user.id
+      });
     }
   }
 
