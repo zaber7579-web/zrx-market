@@ -911,7 +911,20 @@ class MiddlemanBot extends EventEmitter {
           .addSubcommand(subcommand =>
             subcommand
               .setName('list')
-              .setDescription('List all reaction roles'))
+              .setDescription('List all reaction roles')),
+
+        new SlashCommandBuilder()
+          .setName('verify-setup')
+          .setDescription('Setup verification and role selection messages (moderator only)')
+          .setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles)
+          .addChannelOption(option =>
+            option.setName('channel')
+              .setDescription('Channel to send messages (default: get-roles)')
+              .setRequired(false))
+          .addRoleOption(option =>
+            option.setName('verify_role')
+              .setDescription('Role to give when verified (unlocks channels)')
+              .setRequired(false))
       ].map(command => command.toJSON());
 
       const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_BOT_TOKEN);
@@ -948,7 +961,7 @@ class MiddlemanBot extends EventEmitter {
     const asyncCommands = ['balance', 'daily', 'work', 'collect', 'slut', 'casinostats', 'coinflip', 'dice', 'double', 'roulette', 'blackjack', 'hit', 'stand', 
                            'stats', 'user', 'trade', 'ai', 'mm', 'blacklist', 'report', 'verify', 'unverify', 'serverstats', 'cleanup', 
                            'casinoadd', 'casinoremove', 'casinoreset', 'setup', 'welcome', 'poll', 'giveaway', 'level', 'leaderboard', 
-                           'announce', 'warn', 'mute', 'kick', 'ban', 'reactionrole'];
+                           'announce', 'warn', 'mute', 'kick', 'ban', 'reactionrole', 'verify-setup'];
     const needsDefer = asyncCommands.includes(command);
     
     // Commands that should be ephemeral (only visible to user)
@@ -1087,6 +1100,9 @@ class MiddlemanBot extends EventEmitter {
           break;
         case 'reactionrole':
           await this.handleSlashReactionRole(interaction);
+          break;
+        case 'verify-setup':
+          await this.handleSlashVerifySetup(interaction);
           break;
         case 'casinoadd':
           await this.handleSlashCasinoAdd(interaction);
@@ -4493,10 +4509,11 @@ class MiddlemanBot extends EventEmitter {
       const hasModeratorRole = process.env.MODERATOR_ROLE_ID ? interaction.member?.roles.cache.has(process.env.MODERATOR_ROLE_ID) : false;
       const hasManageMessages = interaction.member?.permissions.has('MANAGE_MESSAGES');
       const hasAdmin = interaction.member?.permissions.has('ADMINISTRATOR');
-      const isModerator = hasModeratorRole || hasManageMessages || hasAdmin;
+      const hasManageRoles = interaction.member?.permissions.has('MANAGE_ROLES');
+      const isModerator = hasModeratorRole || hasManageMessages || hasAdmin || hasManageRoles;
       
       if (!isModerator) {
-        return await interaction.editReply({ content: `❌ ${getSnarkyResponse('noPermission')} You need Manage Messages permission or Moderator role.` });
+        return await interaction.editReply({ content: `❌ ${getSnarkyResponse('noPermission')} You need Manage Messages or Manage Roles permission.` });
       }
 
       const channel = interaction.options.getChannel('channel');
@@ -5049,6 +5066,130 @@ class MiddlemanBot extends EventEmitter {
       }
     } catch (error) {
       console.error('Error handling reaction role:', error);
+    }
+  }
+
+  async handleSlashVerifySetup(interaction) {
+    try {
+      // Check permissions
+      const hasModeratorRole = process.env.MODERATOR_ROLE_ID ? interaction.member?.roles.cache.has(process.env.MODERATOR_ROLE_ID) : false;
+      const hasManageMessages = interaction.member?.permissions.has('MANAGE_MESSAGES');
+      const hasAdmin = interaction.member?.permissions.has('ADMINISTRATOR');
+      const hasManageRoles = interaction.member?.permissions.has('MANAGE_ROLES');
+      const isModerator = hasModeratorRole || hasManageMessages || hasAdmin || hasManageRoles;
+      
+      if (!isModerator) {
+        return await interaction.editReply({ content: `❌ ${getSnarkyResponse('noPermission')} You need Manage Roles permission.` });
+      }
+
+      // Default to the channel ID provided by user, or find get-roles channel
+      const targetChannelId = '1455663828376485888';
+      const channel = interaction.options.getChannel('channel') || 
+                     interaction.guild.channels.cache.get(targetChannelId) ||
+                     interaction.guild.channels.cache.find(c => c.name === 'get-roles' || c.name === 'welcom !') ||
+                     interaction.channel;
+      
+      const verifyRole = interaction.options.getRole('verify_role');
+      
+      if (!channel) {
+        return await interaction.editReply({ content: '❌ Channel not found.' });
+      }
+
+      // Create verification message
+      const verifyEmbed = new EmbedBuilder()
+        .setTitle('✅ Verify to Unlock Channels')
+        .setDescription('**React with ✅ to verify and unlock access to all channels!**\n\nOnce you verify, you\'ll be able to see and use all the server channels.')
+        .setColor(0x00D166)
+        .setFooter({ text: 'Click the checkmark below to verify' })
+        .setTimestamp();
+
+      const verifyMessage = await channel.send({ embeds: [verifyEmbed] });
+      await verifyMessage.react('✅');
+
+      // Store verification reaction role if role provided
+      if (verifyRole) {
+        await dbHelpers.run(`
+          CREATE TABLE IF NOT EXISTS reaction_roles (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            messageId TEXT,
+            channelId TEXT,
+            roleId TEXT,
+            emoji TEXT,
+            createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
+          )
+        `);
+
+        await dbHelpers.run(
+          'INSERT INTO reaction_roles (messageId, channelId, roleId, emoji) VALUES (?, ?, ?, ?)',
+          [verifyMessage.id, channel.id, verifyRole.id, '✅']
+        );
+      }
+
+      // Wait a bit before sending next message
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      // Create role selection messages similar to Carl-bot style
+      const roleMessages = [
+        {
+          title: 'Gender Roles',
+          description: '**@she/her** ✨\n**@he/him** ✨\n**@they/them** ➗\n**@other** ➗',
+          emojis: ['💗', '💙', '💜', '🤍'],
+          roles: ['she/her', 'he/him', 'they/them', 'other'] // These should be role names - user will need to configure actual role IDs
+        },
+        {
+          title: 'Age',
+          description: '**@12-15** »\n**@15-18** »\n**@18+** »',
+          emojis: ['👶', '👩', '👴'],
+          roles: ['12-15', '15-18', '18+']
+        },
+        {
+          title: 'Relationship Status',
+          description: '**@TAKEN!** ❤️\n**@SINGLE** 💙',
+          emojis: ['❤️', '💙'],
+          roles: ['TAKEN!', 'SINGLE']
+        },
+        {
+          title: 'Region',
+          description: '**@north american us** 🇺🇸\n**@asia** 🇵🇱\n**@africa** 🐵\n**@south amarica** 🌎',
+          emojis: ['🇺🇸', '🇵🇱', '🐵', '🌎'],
+          roles: ['north american us', 'asia', 'africa', 'south amarica']
+        }
+      ];
+
+      const createdMessages = [verifyMessage.id];
+
+      for (const roleMsg of roleMessages) {
+        const embed = new EmbedBuilder()
+          .setTitle(roleMsg.title)
+          .setDescription(roleMsg.description)
+          .setColor(0x5865F2)
+          .setTimestamp();
+
+        const message = await channel.send({ embeds: [embed] });
+        createdMessages.push(message.id);
+
+        // Add reactions
+        for (const emoji of roleMsg.emojis) {
+          await message.react(emoji);
+        }
+
+        // Store reaction roles (user will need to map role names to actual role IDs using /reactionrole add)
+        // We'll just add placeholders for now
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+
+      const resultEmbed = new EmbedBuilder()
+        .setTitle('✅ Verification Setup Complete!')
+        .setDescription(`Sent ${createdMessages.length} messages to <#${channel.id}>\n\n**Next Steps:**\n1. Use \`/reactionrole add\` to link emojis to actual roles\n2. Make sure the verify role has proper channel permissions\n3. Test by reacting to the messages`)
+        .setColor(0x00D166)
+        .setFooter({ text: `Setup by: ${interaction.user.tag}` })
+        .setTimestamp();
+
+      await interaction.editReply({ embeds: [resultEmbed] });
+
+    } catch (error) {
+      console.error('Error in verify setup:', error);
+      await interaction.editReply({ content: `❌ ${getSnarkyResponse('error')} ${error.message}` });
     }
   }
 
