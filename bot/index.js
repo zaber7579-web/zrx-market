@@ -4441,17 +4441,17 @@ class MiddlemanBot extends EventEmitter {
       await delay(500);
 
       await createVoiceChannel(vcActivitiesCategory, 'Roblox vc!', {
-        topic: 'Roblox voice channel for gaming'
+        // Voice channels don't support topics - removed to avoid Discord validation errors
       });
       await delay(500);
 
       await createVoiceChannel(vcActivitiesCategory, 'Beef', {
-        topic: 'Voice channel for discussions'
+        // Voice channels don't support topics - removed to avoid Discord validation errors
       });
       await delay(500);
 
       await createVoiceChannel(vcActivitiesCategory, 'Game night', {
-        topic: 'Game night voice channel'
+        // Voice channels don't support topics - removed to avoid Discord validation errors
       });
       await delay(500);
 
