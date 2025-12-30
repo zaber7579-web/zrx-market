@@ -4293,12 +4293,14 @@ class MiddlemanBot extends EventEmitter {
           if (existing && force) {
             await existing.delete().catch(() => {});
           }
+          // Remove topic from options - voice channels don't support topics and Discord rejects certain words
+          const { topic, ...channelOptions } = options;
           const channelData = {
             name: name,
             type: 2, // Voice channel
             parent: category?.id || null,
             reason: 'Auto-setup by bot',
-            ...options
+            ...channelOptions
           };
           const channel = await guild.channels.create(channelData);
           createdChannels.push(channel);
@@ -4487,9 +4489,14 @@ class MiddlemanBot extends EventEmitter {
     const subcommand = interaction.options.getSubcommand();
     
     if (subcommand === 'setup') {
-      const hasModeratorRole = interaction.member?.roles.cache.has(process.env.MODERATOR_ROLE_ID);
-      if (!hasModeratorRole) {
-        return await interaction.editReply({ content: `❌ ${getSnarkyResponse('noPermission')}` });
+      // Check permissions - same flexible system as other commands
+      const hasModeratorRole = process.env.MODERATOR_ROLE_ID ? interaction.member?.roles.cache.has(process.env.MODERATOR_ROLE_ID) : false;
+      const hasManageMessages = interaction.member?.permissions.has('MANAGE_MESSAGES');
+      const hasAdmin = interaction.member?.permissions.has('ADMINISTRATOR');
+      const isModerator = hasModeratorRole || hasManageMessages || hasAdmin;
+      
+      if (!isModerator) {
+        return await interaction.editReply({ content: `❌ ${getSnarkyResponse('noPermission')} You need Manage Messages permission or Moderator role.` });
       }
 
       const channel = interaction.options.getChannel('channel');
