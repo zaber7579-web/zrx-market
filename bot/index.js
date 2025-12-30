@@ -935,12 +935,32 @@ class MiddlemanBot extends EventEmitter {
       const guildId = process.env.GUILD_ID;
       
       if (guildId) {
+        // Clear global commands first to avoid duplicates
+        try {
+          await rest.put(Routes.applicationCommands(clientId), { body: [] });
+          console.log('✅ Cleared global commands to prevent duplicates');
+        } catch (error) {
+          console.warn('⚠️ Could not clear global commands (this is okay):', error.message);
+        }
+        
+        // Register only guild commands
         await rest.put(
           Routes.applicationGuildCommands(clientId, guildId),
           { body: commands }
         );
         console.log(`✅ Successfully registered ${commands.length} slash commands for guild ${guildId}`);
       } else {
+        // Clear guild commands if we're registering globally
+        try {
+          const guilds = this.client.guilds.cache;
+          for (const [id, guild] of guilds) {
+            await rest.put(Routes.applicationGuildCommands(clientId, id), { body: [] }).catch(() => {});
+          }
+          console.log('✅ Cleared guild commands to prevent duplicates');
+        } catch (error) {
+          console.warn('⚠️ Could not clear guild commands:', error.message);
+        }
+        
         await rest.put(
           Routes.applicationCommands(clientId),
           { body: commands }
