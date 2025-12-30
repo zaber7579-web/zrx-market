@@ -5423,7 +5423,7 @@ class MiddlemanBot extends EventEmitter {
         {
           title: 'Age',
           description: '**@12-15** »\n**@15-18** »\n**@18+** »',
-          emojis: ['👶', '👩', '👴'],
+          emojis: ['👶', '🧑', '👴'],
           roles: ['12-15', '15-18', '18+']
         },
         {
