@@ -147,11 +147,28 @@ class MiddlemanBot extends EventEmitter {
     this.client.once(Events.ClientReady, async () => {
       console.log(`🤖 Bot logged in as ${this.client.user.tag} - Ready to be a snarky asshole!`);
       
-      // Set Rich Presence
+      // Set Rich Presence - Nice message for Alli
+      const statusMessages = [
+        'For Alli 💜',
+        'Made with love for Alli',
+        'Serving Alli\'s community',
+        'Alli\'s Miss Death Bot 💜'
+      ];
+      const randomStatus = statusMessages[Math.floor(Math.random() * statusMessages.length)];
+      
       this.client.user.setPresence({
-        activities: [{ name: 'zrxmarket.com', type: ActivityType.Watching }],
+        activities: [{ name: randomStatus, type: ActivityType.Custom }],
         status: 'online',
       });
+      
+      // Update status periodically to cycle through messages
+      setInterval(() => {
+        const newStatus = statusMessages[Math.floor(Math.random() * statusMessages.length)];
+        this.client.user.setPresence({
+          activities: [{ name: newStatus, type: ActivityType.Custom }],
+          status: 'online',
+        });
+      }, 300000); // Change every 5 minutes
 
       // Set AI client reference
       this.ai.setClient(this.client);
