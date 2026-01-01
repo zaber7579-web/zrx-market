@@ -4368,14 +4368,18 @@ class MiddlemanBot extends EventEmitter {
             // Apply permissions even if channel exists
             if (options.permissionOverwrites && options.permissionOverwrites.length > 0) {
               try {
+                console.log(`📝 Applying permissions to existing channel: ${name}`);
                 for (const overwrite of options.permissionOverwrites) {
                   await existing.permissionOverwrites.edit(overwrite.id, {
                     allow: overwrite.allow || [],
                     deny: overwrite.deny || []
                   });
+                  await delay(200); // Small delay between permission updates
                 }
+                console.log(`✅ Applied permissions to existing channel: ${name}`);
               } catch (permError) {
                 errors.push(`Failed to update permissions for channel ${name}: ${permError.message}`);
+                console.error(`❌ Permission error for ${name}:`, permError.message);
               }
             }
             createdChannels.push(existing);
