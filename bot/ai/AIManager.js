@@ -336,16 +336,17 @@ class AIManager {
     }
 
     const aiChannelId = await this.getAIChannel(message.guild.id);
-    if (!aiChannelId) {
-      // No AI channel configured - don't respond
-      return false;
-    }
     
-    if (aiChannelId !== message.channel.id) {
+    // Check if message is in AI channel OR if bot is mentioned
+    const isMentioned = message.mentions.has(this.client?.user);
+    const isInAIChannel = aiChannelId && aiChannelId === message.channel.id;
+    
+    // Only respond if in AI channel OR if mentioned
+    if (!isInAIChannel && !isMentioned) {
       return false;
     }
 
-    // Respond to any message in the AI channel
+    // Respond to any message in the AI channel or when mentioned
     // Bot participates in conversation naturally
 
     if (!this.llm) {
