@@ -178,6 +178,7 @@ class MiddlemanBot extends EventEmitter {
 
       await this.registerSlashCommands();
       await this.setupPendingThreadTimers();
+      await this.syncReactionRoles();
       // Proactive messaging disabled - bot only responds when mentioned or replied to
     });
 
