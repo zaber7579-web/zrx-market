@@ -4339,7 +4339,14 @@ class MiddlemanBot extends EventEmitter {
       const createCategory = async (name, emoji = '') => {
         try {
           const categoryName = emoji ? `${emoji} ${name}` : name;
-          const existing = guild.channels.cache.find(c => c.name === categoryName.toLowerCase().replace(/\s+/g, '-') && c.type === 4);
+          // Fetch channels to ensure cache is up to date
+          await guild.channels.fetch();
+          // Try exact match first, then normalized match
+          const normalizedName = categoryName.toLowerCase().replace(/\s+/g, '-');
+          const existing = guild.channels.cache.find(c => {
+            const cName = c.name.toLowerCase();
+            return (c.type === 4) && (c.name === categoryName || cName === normalizedName || cName === categoryName.toLowerCase());
+          });
           if (existing && !force) {
             createdCategories.push(existing);
             return existing;
@@ -4363,7 +4370,19 @@ class MiddlemanBot extends EventEmitter {
       // Helper function to create text channel
       const createTextChannel = async (category, name, options = {}) => {
         try {
-          const existing = guild.channels.cache.find(c => c.name === name.toLowerCase().replace(/\s+/g, '-') && c.parent?.id === category?.id);
+          // Fetch channels to ensure cache is up to date
+          if (category) {
+            await category.children.fetch();
+          }
+          // Try exact match first, then normalized match
+          const normalizedName = name.toLowerCase().replace(/\s+/g, '-');
+          const existing = guild.channels.cache.find(c => {
+            if (c.type !== 0) return false; // Must be text channel
+            const cName = c.name.toLowerCase();
+            const nameMatch = c.name === name || cName === normalizedName || cName === name.toLowerCase();
+            const parentMatch = category ? c.parent?.id === category.id : !c.parent;
+            return nameMatch && parentMatch;
+          });
           if (existing && !force) {
             // Apply permissions even if channel exists
             if (options.permissionOverwrites && options.permissionOverwrites.length > 0) {
@@ -4407,7 +4426,19 @@ class MiddlemanBot extends EventEmitter {
       // Helper function to create voice channel
       const createVoiceChannel = async (category, name, options = {}) => {
         try {
-          const existing = guild.channels.cache.find(c => c.name === name.toLowerCase().replace(/\s+/g, '-') && c.type === 2 && c.parent?.id === category?.id);
+          // Fetch channels to ensure cache is up to date
+          if (category) {
+            await category.children.fetch();
+          }
+          // Try exact match first, then normalized match
+          const normalizedName = name.toLowerCase().replace(/\s+/g, '-');
+          const existing = guild.channels.cache.find(c => {
+            if (c.type !== 2) return false; // Must be voice channel
+            const cName = c.name.toLowerCase();
+            const nameMatch = c.name === name || cName === normalizedName || cName === name.toLowerCase();
+            const parentMatch = category ? c.parent?.id === category.id : !c.parent;
+            return nameMatch && parentMatch;
+          });
           if (existing && !force) {
             return existing;
           }
