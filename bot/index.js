@@ -5354,6 +5354,103 @@ class MiddlemanBot extends EventEmitter {
     }
   }
 
+  async syncReactionRoles() {
+    try {
+      console.log('🔄 Syncing reaction roles...');
+      
+      // Ensure reaction_roles table exists
+      await dbHelpers.run(`
+        CREATE TABLE IF NOT EXISTS reaction_roles (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          messageId TEXT,
+          channelId TEXT,
+          roleId TEXT,
+          emoji TEXT,
+          createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+
+      // Get all unique message IDs that have reaction roles
+      const allReactionRoles = await dbHelpers.all(
+        'SELECT DISTINCT messageId, channelId FROM reaction_roles'
+      );
+
+      if (!allReactionRoles || allReactionRoles.length === 0) {
+        console.log('✅ No reaction roles to sync');
+        return;
+      }
+
+      let syncedCount = 0;
+      let errorCount = 0;
+
+      for (const reactionRole of allReactionRoles) {
+        try {
+          const channel = await this.client.channels.fetch(reactionRole.channelId).catch(() => null);
+          if (!channel) {
+            console.warn(`⚠️  Channel ${reactionRole.channelId} not found for message ${reactionRole.messageId}`);
+            continue;
+          }
+
+          const message = await channel.messages.fetch(reactionRole.messageId).catch(() => null);
+          if (!message) {
+            console.warn(`⚠️  Message ${reactionRole.messageId} not found in channel ${reactionRole.channelId}`);
+            continue;
+          }
+
+          // Get all reactions for this message
+          const reactionsForMessage = await dbHelpers.all(
+            'SELECT DISTINCT emoji FROM reaction_roles WHERE messageId = ?',
+            [reactionRole.messageId]
+          );
+
+          // Re-add all reactions
+          for (const reaction of reactionsForMessage) {
+            try {
+              // Parse emoji (could be unicode or custom emoji format <:name:id>)
+              let emojiToAdd = reaction.emoji;
+              
+              // If it's a custom emoji format, extract the ID
+              if (emojiToAdd.startsWith('<:') && emojiToAdd.endsWith('>')) {
+                const match = emojiToAdd.match(/<:(\w+):(\d+)>/);
+                if (match) {
+                  const emojiId = match[2];
+                  const emoji = this.client.emojis.cache.get(emojiId);
+                  if (emoji) {
+                    await message.react(emoji);
+                  } else {
+                    await message.react(emojiToAdd);
+                  }
+                } else {
+                  await message.react(emojiToAdd);
+                }
+              } else {
+                // Unicode emoji
+                await message.react(emojiToAdd);
+              }
+              
+              // Small delay to avoid rate limits
+              await new Promise(resolve => setTimeout(resolve, 500));
+            } catch (reactError) {
+              // Reaction might already exist, which is fine
+              if (!reactError.message.includes('Unknown Emoji') && !reactError.message.includes('already')) {
+                console.warn(`⚠️  Could not add reaction ${reaction.emoji} to message ${reactionRole.messageId}:`, reactError.message);
+              }
+            }
+          }
+
+          syncedCount++;
+        } catch (error) {
+          errorCount++;
+          console.error(`❌ Error syncing reaction roles for message ${reactionRole.messageId}:`, error.message);
+        }
+      }
+
+      console.log(`✅ Synced ${syncedCount} reaction role message(s)${errorCount > 0 ? ` (${errorCount} error(s))` : ''}`);
+    } catch (error) {
+      console.error('❌ Error syncing reaction roles:', error);
+    }
+  }
+
   async handleSlashVerifySetup(interaction) {
     try {
       // Check permissions
