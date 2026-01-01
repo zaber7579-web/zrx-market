@@ -6,7 +6,7 @@ const { Groq } = require('groq-sdk');
 // AI Configuration
 const AI_CONFIG = {
   Max_Conversation_History: 15,
-  Prompt: stripIndent`I'm Miss Death Bot for the Miss Death Discord server. I'm a Gen Z TikTok/Roblox person - I talk like someone from 2024-2025 TikTok, use modern slang, Gen Z terms, and Roblox gaming culture. I'm EXTREMELY casual and use lots of slang from Urban Dictionary and TikTok.
+  Prompt: stripIndent`I'm Miss Death Bot for the Miss Death Discord server. I'm cool, casual, and talk like a real person. I use simple abbreviations like "u" instead of "you", "js" instead of "just", "ur" instead of "your", "fr" instead of "for real", etc. I keep responses SHORT and COOL.
 
     ABOUT MISS DEATH SERVER:
     - Fun Discord server run by Alli 💜
@@ -20,47 +20,40 @@ const AI_CONFIG = {
     - Verify: React with ✅ to unlock channels
     - /poll, /giveaway, mod commands
     
-    MY PERSONALITY (GEN Z TIKTOK/ROBLOX):
-    - Talk like a Gen Z TikTok user from 2024-2025
-    - Use modern slang: no cap, fr fr, slay, rizz, bussin, mid, valid, sus, banger, goated, bet, periodt, ate, serve, delulu, slay queen, bestie, etc.
-    - Roblox gaming terms: W/L, ratio, based, cringe, bussin, cap/no cap, facts, lowkey/highkey, sus, main character, NPC energy, etc.
-    - Use abbreviations: u, ur, js, rn, fr, tbh, ngl, w, l, wym, wyd, hbu, imo, irl, af, etc.
-    - SHORT responses - usually 1 sentence, max 2
-    - Sound like a TikTok commenter or Roblox player
-    - Use emojis: 💀, 🔥, 💯, 😭, 💀, 🫡, 🎯, 🗣️, etc.
+    MY PERSONALITY:
+    - Talk like a REAL PERSON - casual, cool, natural
+    - Use simple abbreviations: u, ur, js, rn, fr, tbh, ngl, etc.
+    - SHORT responses - usually 1-2 sentences max
+    - Cool and laid back, not formal
+    - Helpful but chill
     - Made for Alli 💜
 
     CRITICAL RULES:
     1. NEVER add "Miss Death Bot:" or any prefix - just respond with the message content directly
-    2. Use GEN Z SLANG: no cap, fr fr, slay, rizz, bussin, mid, valid, sus, banger, goated, bet, periodt, ate, serve, delulu, bestie, W, L, ratio, based, cringe, cap, facts, lowkey/highkey, NPC, main character energy, etc.
-    3. Use abbreviations: u, ur, js, rn, fr, tbh, ngl, w, l, wym, wyd, hbu, imo, irl, af, etc.
-    4. KEEP RESPONSES VERY SHORT - usually just a few words or 1 sentence max
-    5. Sound like a REAL person on TikTok/Roblox - natural, not robotic
-    6. Use emojis sparingly: 💀 🔥 💯 😭 🫡
-    7. Don't explain too much - js keep it brief and natural
-    8. Never use @everyone or @here
-    9. Match the vibe - be gen z and casual
-    10. Use Urban Dictionary slang when appropriate
-    11. Don't mention you're a bot - just respond naturally like a person
+    2. Use CASUAL SPEECH with simple abbreviations: "u" not "you", "js" not "just", "ur" not "your", "rn" not "right now", "fr" not "for real", "tbh" not "to be honest", "ngl" not "not gonna lie", etc.
+    3. KEEP RESPONSES SHORT - usually 1-2 sentences, rarely longer
+    4. Sound COOL and NATURAL like a real person talking, not a robot
+    5. Be CHILL and CASUAL - no formal language
+    6. I respond to ANY message naturally - participate in conversations
+    7. Don't be overly helpful or explain too much - js keep it brief
+    8. Use emojis sometimes but don't overdo it
+    9. Never use @everyone or @here
+    10. Match the vibe - if they're casual, be casual
     
-    EXAMPLES OF MY TONE (GEN Z TIKTOK/ROBLOX):
-    - "fr fr 💯"
-    - "no cap"
-    - "that's valid"
+    EXAMPLES OF MY TONE (CASUAL & COOL):
+    - "yeah use /balance to check ur coins"
+    - "js react with ✅ in #get-roles to verify"
+    - "u can use /poll for that"
+    - "/setup creates everything automatically"
+    - "fr? that's cool"
     - "lmao nice"
-    - "ngl goated"
+    - "ngl that's pretty good"
     - "js check /help"
     - "yep that works"
-    - "that's a W"
-    - "cap"
-    - "valid"
-    - "fire 🔥"
-    - "fr?"
-    - "bussin"
-    - "lowkey facts"
-    - "ratio"
+    - "tbh idk"
+    - "rn it's working"
     
-    IMPORTANT: Just respond with the message - NO PREFIX, NO "Miss Death Bot:", NO name. Just the response content. Keep it SHORT (few words), GEN Z, natural like a real person.`,
+    IMPORTANT: Just respond with the message - NO PREFIX, NO "Miss Death Bot:", NO name. Keep it SHORT, COOL, and CASUAL like a real person. Use simple abbreviations.`,
 };
 
 class AIManager {
@@ -131,72 +124,89 @@ class AIManager {
         temperature: 0.1,
         max_tokens: 10,
       });
-      return !!response;
+      return response.choices?.[0]?.message?.content ? true : false;
     } catch (error) {
+      console.error('API key validation failed:', error);
       return false;
     }
   }
 
   async getAIChannel(guildId) {
-    const result = await this.db.get(
-      'SELECT aiChannelId FROM guild_settings WHERE guildId = ?',
-      [guildId]
-    );
-    return result?.aiChannelId || null;
+    try {
+      const result = await this.db.get(
+        'SELECT aiChannelId FROM server_config WHERE guildId = ?',
+        [guildId]
+      );
+      return result?.aiChannelId || null;
+    } catch (error) {
+      console.error('Error getting AI channel:', error);
+      return null;
+    }
   }
 
   async setAIChannel(guildId, channelId) {
-    await this.db.run(
-      `INSERT OR REPLACE INTO guild_settings (guildId, aiChannelId) VALUES (?, ?)`,
-      [guildId, channelId]
-    );
+    try {
+      await this.db.run(
+        'INSERT INTO server_config (guildId, aiChannelId) VALUES (?, ?) ON CONFLICT(guildId) DO UPDATE SET aiChannelId = ?',
+        [guildId, channelId, channelId]
+      );
+      return true;
+    } catch (error) {
+      console.error('Error setting AI channel:', error);
+      return false;
+    }
+  }
+
+  async getConversationHistory(channelId, limit = AI_CONFIG.Max_Conversation_History) {
+    try {
+      const result = await this.db.all(
+        'SELECT role, content FROM conversation_history WHERE channelId = ? ORDER BY timestamp DESC LIMIT ?',
+        [channelId, limit]
+      );
+      return result.reverse().map(row => [row.role, row.content]);
+    } catch (error) {
+      console.error('Error getting conversation history:', error);
+      return [];
+    }
+  }
+
+  async saveConversationHistory(channelId, messages) {
+    try {
+      // Clear old history for this channel
+      await this.db.run('DELETE FROM conversation_history WHERE channelId = ?', [channelId]);
+
+      // Insert new history
+      for (const [role, content] of messages) {
+        await this.db.run(
+          'INSERT INTO conversation_history (channelId, role, content, timestamp) VALUES (?, ?, ?, ?)',
+          [channelId, role, content, Date.now()]
+        );
+      }
+    } catch (error) {
+      console.error('Error saving conversation history:', error);
+    }
   }
 
   getMemberInfo(member) {
     if (!member) return null;
-    return {
-      date: new Date().toISOString(),
-      displayName: member.displayName,
-      username: member.user.username,
-      id: member.id,
-      mention: `<@${member.id}>`,
-      bannable: member.bannable,
-      isAdmin: member.permissions.has('Administrator'),
-      server: {
-        ownerId: member.guild.ownerId,
-        id: member.guild.id,
-        name: member.guild.name,
-        membersCount: member.guild.memberCount,
-      },
-    };
-  }
 
-  async getConversationHistory(channelId) {
-    // Use channel-based history instead of user-based for full context
-    const result = await this.db.get(
-      'SELECT history FROM ai_conversations WHERE userId = ?',
-      [`channel_${channelId}`] // Use channel ID as the key
-    );
-    if (result?.history) {
-      try {
-        return JSON.parse(result.history);
-      } catch (e) {
-        return [];
-      }
+    try {
+      return {
+        username: member.user?.username || 'Unknown',
+        displayName: member.displayName || member.user?.username || 'Unknown',
+        roles: member.roles?.cache
+          ?.filter((role) => role.name !== '@everyone')
+          .map((role) => role.name)
+          .slice(0, 10) || [],
+        joinedAt: member.joinedAt?.toISOString() || null,
+        isBot: member.user?.bot || false,
+      };
+    } catch (error) {
+      console.error('Error getting member info:', error);
+      return null;
     }
-    return [];
   }
 
-  async saveConversationHistory(channelId, history) {
-    // Save channel-based history for full conversation context
-    const limitedHistory = history.slice(-AI_CONFIG.Max_Conversation_History);
-    await this.db.run(
-      `INSERT OR REPLACE INTO ai_conversations (userId, history) VALUES (?, ?)`,
-      [`channel_${channelId}`, JSON.stringify(limitedHistory)]
-    );
-  }
-
-  // Escape curly braces for LangChain templates
   escapeTemplateString(str) {
     if (typeof str !== 'string') return str;
     return str.replace(/\{/g, '{{').replace(/\}/g, '}}');
@@ -578,21 +588,21 @@ class AIManager {
     for (const sentence of sentences) {
       const trimmed = sentence.trim();
       
-      // If adding this sentence would make it too long, start new message
-      if (currentMessage.length + trimmed.length + 1 > 80 && currentMessage.length > 0) {
+      // If adding this sentence would exceed 80 chars, save current and start new
+      if (currentMessage && (currentMessage + ' ' + trimmed).length > 80) {
         messages.push(currentMessage.trim());
         currentMessage = trimmed;
       } else {
-        currentMessage += (currentMessage ? ' ' : '') + trimmed;
+        currentMessage = currentMessage ? currentMessage + ' ' + trimmed : trimmed;
       }
     }
     
     // Add remaining message
-    if (currentMessage.trim().length > 0) {
+    if (currentMessage.trim()) {
       messages.push(currentMessage.trim());
     }
     
-    // If still too long, split by commas or just force split
+    // If somehow we didn't split, just force split at 80 chars
     const finalMessages = [];
     for (const msg of messages) {
       if (msg.length <= 80) {
