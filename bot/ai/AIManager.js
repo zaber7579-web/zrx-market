@@ -84,7 +84,7 @@ class AIManager {
         cache: true,
         temperature: 0.95, // Balanced temperature for professional but varied snarky responses
         model: 'llama-3.1-8b-instant',
-        maxTokens: 80, // Very short responses to reduce token usage
+        maxTokens: 50, // Keep responses very short and casual
         onFailedAttempt: (error) => {
           // Handle rate limits gracefully
           if (error.status === 429) {
