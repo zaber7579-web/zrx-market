@@ -134,10 +134,10 @@ class MiddlemanBot extends EventEmitter {
     this.ai = new AIManager(dbHelpers, this.client);
     
     // Set client reference after client is ready
-    this.client.once(Events.ClientReady, () => {
-      this.ai.setClient(this.client);
-      this.startAIProactiveMessaging();
-    });
+      this.client.once(Events.ClientReady, () => {
+        this.ai.setClient(this.client);
+        // Proactive messaging disabled - bot only responds when mentioned or replied to
+      });
 
     this.setupEventHandlers();
     this.setupCommands();
@@ -178,7 +178,7 @@ class MiddlemanBot extends EventEmitter {
 
       await this.registerSlashCommands();
       await this.setupPendingThreadTimers();
-      this.startAIProactiveMessaging();
+      // Proactive messaging disabled - bot only responds when mentioned or replied to
     });
 
     this.client.on(Events.GuildMemberAdd, async (member) => {
