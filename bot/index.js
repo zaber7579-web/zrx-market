@@ -5446,60 +5446,97 @@ class MiddlemanBot extends EventEmitter {
         return;
       }
 
+      console.log(`📋 Found ${allReactionRoles.length} message(s) with reaction roles to sync`);
+
       let syncedCount = 0;
       let errorCount = 0;
+      let reactionsAdded = 0;
 
       for (const reactionRole of allReactionRoles) {
         try {
           const channel = await this.client.channels.fetch(reactionRole.channelId).catch(() => null);
           if (!channel) {
             console.warn(`⚠️  Channel ${reactionRole.channelId} not found for message ${reactionRole.messageId}`);
+            errorCount++;
             continue;
           }
 
           const message = await channel.messages.fetch(reactionRole.messageId).catch(() => null);
           if (!message) {
             console.warn(`⚠️  Message ${reactionRole.messageId} not found in channel ${reactionRole.channelId}`);
+            errorCount++;
             continue;
           }
 
-          // Get all reactions for this message
+          // Get all reactions for this message from database
           const reactionsForMessage = await dbHelpers.all(
             'SELECT DISTINCT emoji FROM reaction_roles WHERE messageId = ?',
             [reactionRole.messageId]
           );
 
-          // Re-add all reactions
+          if (!reactionsForMessage || reactionsForMessage.length === 0) {
+            console.warn(`⚠️  No reactions found in database for message ${reactionRole.messageId}`);
+            continue;
+          }
+
+          console.log(`📝 Syncing ${reactionsForMessage.length} reaction(s) for message ${reactionRole.messageId}`);
+
+          // Get existing reactions on the message
+          const existingReactions = message.reactions.cache.map(r => r.emoji.id ? `<:${r.emoji.name}:${r.emoji.id}>` : r.emoji.name);
+
+          // Re-add all reactions that should be there
           for (const reaction of reactionsForMessage) {
             try {
-              // Parse emoji (could be unicode or custom emoji format <:name:id>)
               let emojiToAdd = reaction.emoji;
+              let emojiObject = null;
               
-              // If it's a custom emoji format, extract the ID
+              // Check if reaction already exists
+              const alreadyExists = existingReactions.includes(emojiToAdd) || 
+                                   (emojiToAdd.startsWith('<:') && existingReactions.some(e => e.includes(emojiToAdd.split(':')[2]?.split('>')[0])));
+              
+              if (alreadyExists) {
+                console.log(`  ✓ Reaction ${emojiToAdd} already exists on message ${reactionRole.messageId}`);
+                continue;
+              }
+              
+              // Parse emoji (could be unicode or custom emoji format <:name:id>)
               if (emojiToAdd.startsWith('<:') && emojiToAdd.endsWith('>')) {
                 const match = emojiToAdd.match(/<:(\w+):(\d+)>/);
                 if (match) {
                   const emojiId = match[2];
-                  const emoji = this.client.emojis.cache.get(emojiId);
-                  if (emoji) {
-                    await message.react(emoji);
-                  } else {
-                    await message.react(emojiToAdd);
+                  emojiObject = this.client.emojis.cache.get(emojiId);
+                  if (!emojiObject) {
+                    // Try to fetch from guild
+                    const guild = message.guild;
+                    if (guild) {
+                      await guild.emojis.fetch().catch(() => {});
+                      emojiObject = guild.emojis.cache.get(emojiId);
+                    }
                   }
-                } else {
-                  await message.react(emojiToAdd);
                 }
-              } else {
-                // Unicode emoji
-                await message.react(emojiToAdd);
               }
               
+              // Add the reaction
+              if (emojiObject) {
+                await message.react(emojiObject);
+                console.log(`  ✅ Added reaction ${emojiToAdd} to message ${reactionRole.messageId}`);
+              } else {
+                await message.react(emojiToAdd);
+                console.log(`  ✅ Added reaction ${emojiToAdd} to message ${reactionRole.messageId}`);
+              }
+              
+              reactionsAdded++;
+              
               // Small delay to avoid rate limits
-              await new Promise(resolve => setTimeout(resolve, 500));
+              await new Promise(resolve => setTimeout(resolve, 600));
             } catch (reactError) {
-              // Reaction might already exist, which is fine
-              if (!reactError.message.includes('Unknown Emoji') && !reactError.message.includes('already')) {
-                console.warn(`⚠️  Could not add reaction ${reaction.emoji} to message ${reactionRole.messageId}:`, reactError.message);
+              // Check if it's just because reaction already exists
+              const errorMsg = reactError.message?.toLowerCase() || '';
+              if (errorMsg.includes('unknown emoji') || errorMsg.includes('reaction') && errorMsg.includes('already')) {
+                console.log(`  ℹ️  Reaction ${reaction.emoji} already exists or is invalid`);
+              } else {
+                console.warn(`  ⚠️  Could not add reaction ${reaction.emoji} to message ${reactionRole.messageId}:`, reactError.message);
+                errorCount++;
               }
             }
           }
@@ -5511,7 +5548,7 @@ class MiddlemanBot extends EventEmitter {
         }
       }
 
-      console.log(`✅ Synced ${syncedCount} reaction role message(s)${errorCount > 0 ? ` (${errorCount} error(s))` : ''}`);
+      console.log(`✅ Synced ${syncedCount} reaction role message(s), added ${reactionsAdded} reaction(s)${errorCount > 0 ? ` (${errorCount} error(s))` : ''}`);
     } catch (error) {
       console.error('❌ Error syncing reaction roles:', error);
     }
