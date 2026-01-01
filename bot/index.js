@@ -4517,9 +4517,7 @@ class MiddlemanBot extends EventEmitter {
       const createTextChannel = async (category, name, options = {}) => {
         try {
           // Fetch channels to ensure cache is up to date
-          if (category) {
-            await category.children.fetch();
-          }
+          await guild.channels.fetch();
           // Try exact match first, then normalized match
           const normalizedName = name.toLowerCase().replace(/\s+/g, '-');
           const existing = guild.channels.cache.find(c => {
@@ -4573,9 +4571,7 @@ class MiddlemanBot extends EventEmitter {
       const createVoiceChannel = async (category, name, options = {}) => {
         try {
           // Fetch channels to ensure cache is up to date
-          if (category) {
-            await category.children.fetch();
-          }
+          await guild.channels.fetch();
           // Try exact match first, then normalized match
           const normalizedName = name.toLowerCase().replace(/\s+/g, '-');
           const existing = guild.channels.cache.find(c => {
