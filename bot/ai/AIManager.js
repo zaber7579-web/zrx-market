@@ -442,8 +442,8 @@ class AIManager {
       const messages = this.splitIntoShortMessages(content);
       const singleMessage = messages[0]; // Only send the first message
       
-      // Send message with typing animation effect
-      let replyMsg = await this.sendMessageWithAnimation(message, singleMessage);
+      // Send message instantly (no animation)
+      let replyMsg = await this.sendMessageInstantly(message, singleMessage);
       
       const fullResponse = singleMessage;
 
@@ -464,40 +464,15 @@ class AIManager {
     }
   }
 
-  // Send message with typing animation effect (faster)
-  async sendMessageWithAnimation(message, content) {
+  // Send message instantly with a nice reaction
+  async sendMessageInstantly(message, content) {
     try {
-      // Send initial message
-      const replyMsg = await message.reply({ content: '...' });
+      // Send message immediately
+      const replyMsg = await message.reply({ content: content });
       
-      // Faster animation - update in chunks
-      const chunkSize = 8; // Update every 8 characters
-      let displayedText = '';
-      const chars = content.split('');
-      const delay = 15; // Faster delay
-      
-      for (let i = 0; i < chars.length; i++) {
-        displayedText += chars[i];
-        
-        // Update message in chunks for faster animation
-        if (i % chunkSize === 0 || i === chars.length - 1) {
-          try {
-            await replyMsg.edit({ content: displayedText + (i < chars.length - 1 ? '▊' : '') });
-            if (i < chars.length - 1) {
-              await new Promise(resolve => setTimeout(resolve, delay * chunkSize));
-            }
-          } catch (editError) {
-            // If edit fails, just send final message
-            if (i === chars.length - 1) {
-              await replyMsg.edit({ content: displayedText });
-            }
-          }
-        }
-      }
-      
-      // Add a reaction for extra flair
+      // Add a nice reaction
       try {
-        const reactions = ['💬', '✨', '🤖'];
+        const reactions = ['💜', '✨', '💬', '🤖'];
         const randomReaction = reactions[Math.floor(Math.random() * reactions.length)];
         await replyMsg.react(randomReaction);
       } catch (reactError) {
@@ -506,9 +481,8 @@ class AIManager {
       
       return replyMsg;
     } catch (error) {
-      // Fallback to normal message if animation fails
-      console.error('Error with message animation:', error);
-      return await message.reply({ content: content });
+      console.error('Error sending message:', error);
+      return await message.reply({ content: content }).catch(() => null);
     }
   }
 
