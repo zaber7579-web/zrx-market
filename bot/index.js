@@ -370,6 +370,29 @@ class MiddlemanBot extends EventEmitter {
           updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP
         )
       `);
+      
+      // Add aiChannelId column if it doesn't exist
+      try {
+        await dbHelpers.run(`ALTER TABLE server_config ADD COLUMN aiChannelId TEXT`);
+        console.log('✅ Added aiChannelId column to server_config');
+      } catch (alterError) {
+        // Column might already exist, which is fine
+        if (!alterError.message.includes('duplicate column')) {
+          console.warn('⚠️  Could not add aiChannelId column (may already exist):', alterError.message);
+        }
+      }
+      
+      // Add verifiedRoleId column if it doesn't exist (for setup command)
+      try {
+        await dbHelpers.run(`ALTER TABLE server_config ADD COLUMN verifiedRoleId TEXT`);
+        console.log('✅ Added verifiedRoleId column to server_config');
+      } catch (alterError) {
+        // Column might already exist, which is fine
+        if (!alterError.message.includes('duplicate column')) {
+          console.warn('⚠️  Could not add verifiedRoleId column (may already exist):', alterError.message);
+        }
+      }
+      
       console.log('✅ Database tables initialized');
     } catch (error) {
       console.error('❌ Error initializing database:', error);
