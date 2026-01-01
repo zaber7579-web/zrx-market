@@ -4612,25 +4612,31 @@ class MiddlemanBot extends EventEmitter {
       await interaction.editReply({ content: '🔧 **Step 1/3: Creating roles...**' });
       
       // Create Verified role (green) - users get this after verification
+      // SECURITY: No permissions assigned - only gets permissions through channel overwrites
       const verifiedRole = await createRole('✅ Verified', {
         color: 0x00D166,
         mentionable: false,
-        hoist: true
+        hoist: true,
+        permissions: [] // Explicitly no permissions - only channel access
       });
       await delay(500);
 
       // Create Moderator role (blue) - for moderators
+      // SECURITY: Limited permissions - no Administrator, no ManageGuild
       const moderatorRole = await createRole('👮 Moderator', {
         color: 0x5865F2,
         mentionable: true,
         hoist: true,
         permissions: [
-          PermissionFlagsBits.ManageMessages,
-          PermissionFlagsBits.ManageChannels,
-          PermissionFlagsBits.KickMembers,
-          PermissionFlagsBits.BanMembers,
-          PermissionFlagsBits.ModerateMembers,
-          PermissionFlagsBits.ManageRoles
+          PermissionFlagsBits.ManageMessages,      // Delete/edit messages
+          PermissionFlagsBits.ManageChannels,       // Manage channels
+          PermissionFlagsBits.KickMembers,          // Kick members
+          PermissionFlagsBits.BanMembers,           // Ban members
+          PermissionFlagsBits.ModerateMembers,      // Timeout members
+          PermissionFlagsBits.ManageRoles,         // Manage roles (needed for moderation)
+          PermissionFlagsBits.ViewAuditLog,         // View audit log
+          PermissionFlagsBits.ReadMessageHistory   // Read message history
+          // NOTE: Does NOT have Administrator, ManageGuild, or other dangerous permissions
         ]
       });
       await delay(500);
