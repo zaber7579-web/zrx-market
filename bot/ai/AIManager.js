@@ -336,6 +336,11 @@ class AIManager {
     }
 
     const aiChannelId = await this.getAIChannel(message.guild.id);
+    if (!aiChannelId) {
+      // No AI channel configured - don't respond
+      return false;
+    }
+    
     if (aiChannelId !== message.channel.id) {
       return false;
     }
