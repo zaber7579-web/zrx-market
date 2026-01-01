@@ -94,7 +94,7 @@ class AIManager {
         cache: true,
         temperature: 0.95, // Balanced temperature for professional but varied snarky responses
         model: 'llama-3.1-8b-instant',
-        maxTokens: 30, // Keep responses very short - just a few words
+        maxTokens: 50, // Keep responses short and casual
         onFailedAttempt: (error) => {
           // Handle rate limits gracefully
           if (error.status === 429) {
@@ -330,12 +330,8 @@ class AIManager {
       return false;
     }
 
-    // Respond to messages naturally but not every single one
-    // Add some randomness so it doesn't respond to everything
-    const shouldRespond = Math.random() < 0.4; // Only respond 40% of the time
-    if (!shouldRespond) {
-      return false;
-    }
+    // Respond to any message in the AI channel
+    // Bot participates in conversation naturally
 
     if (!this.llm) {
       return false;
