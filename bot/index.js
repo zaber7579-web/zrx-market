@@ -671,7 +671,15 @@ class MiddlemanBot extends EventEmitter {
         
         new SlashCommandBuilder()
           .setName('cleanup')
-          .setDescription('Clean up old expired trades'),
+          .setDescription('Cleanup commands')
+          .addSubcommand(subcommand =>
+            subcommand
+              .setName('trades')
+              .setDescription('Clean up old expired trades'))
+          .addSubcommand(subcommand =>
+            subcommand
+              .setName('channels')
+              .setDescription('Clean up duplicate channels/categories (administrator only)')),
         
         new SlashCommandBuilder()
           .setName('casinoadd')
@@ -4040,22 +4048,112 @@ class MiddlemanBot extends EventEmitter {
   }
 
   async handleSlashCleanup(interaction) {
-    const hasModeratorRole = interaction.member?.roles.cache.has(process.env.MODERATOR_ROLE_ID);
-    if (!hasModeratorRole) {
-      // Already deferred at top level, use editReply
-      return await interaction.editReply({ content: `❌ ${getSnarkyResponse('noPermission')}` });
-    }
+    const subcommand = interaction.options.getSubcommand();
+    
+    if (subcommand === 'trades') {
+      const hasModeratorRole = interaction.member?.roles.cache.has(process.env.MODERATOR_ROLE_ID);
+      if (!hasModeratorRole) {
+        return await interaction.editReply({ content: `❌ ${getSnarkyResponse('noPermission')}` });
+      }
 
-    try {
-      const result = await dbHelpers.run(
-        `UPDATE trades SET status = 'expired' 
-         WHERE status = 'active' 
-         AND datetime(createdAt, '+5 hours') < datetime('now')`
-      );
+      try {
+        const result = await dbHelpers.run(
+          `UPDATE trades SET status = 'expired' 
+           WHERE status = 'active' 
+           AND datetime(createdAt, '+5 hours') < datetime('now')`
+        );
 
-      await interaction.editReply({ content: `✅ ${getSnarkyResponse('success')} Cleanup completed. ${result.changes || 0} trades expired.` });
-    } catch (error) {
-      await interaction.editReply({ content: `❌ ${getSnarkyResponse('error')} ${error.message}` });
+        await interaction.editReply({ content: `✅ ${getSnarkyResponse('success')} Cleanup completed. ${result.changes || 0} trades expired.` });
+      } catch (error) {
+        await interaction.editReply({ content: `❌ ${getSnarkyResponse('error')} ${error.message}` });
+      }
+    } else if (subcommand === 'channels') {
+      // Check for administrator permission
+      if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
+        return await interaction.editReply({ content: `❌ ${getSnarkyResponse('noPermission')} You must be an administrator to use this command.` });
+      }
+
+      try {
+        await interaction.editReply({ content: '🔍 **Scanning for duplicate channels and categories...**' });
+        
+        const guild = interaction.guild;
+        await guild.channels.fetch(); // Ensure cache is up to date
+        
+        const channelGroups = new Map();
+        const categoryGroups = new Map();
+        const duplicates = [];
+        
+        // Group channels by normalized name and parent
+        for (const channel of guild.channels.cache.values()) {
+          if (channel.type === 4) {
+            // Category
+            const normalizedName = channel.name.toLowerCase().replace(/\s+/g, '-');
+            if (!categoryGroups.has(normalizedName)) {
+              categoryGroups.set(normalizedName, []);
+            }
+            categoryGroups.get(normalizedName).push(channel);
+          } else {
+            // Regular channel
+            const normalizedName = channel.name.toLowerCase().replace(/\s+/g, '-');
+            const key = `${normalizedName}-${channel.parent?.id || 'no-parent'}-${channel.type}`;
+            if (!channelGroups.has(key)) {
+              channelGroups.set(key, []);
+            }
+            channelGroups.get(key).push(channel);
+          }
+        }
+        
+        // Find duplicates (more than 1 channel with same name/parent/type)
+        for (const [key, channels] of channelGroups.entries()) {
+          if (channels.length > 1) {
+            // Keep the oldest, delete the rest
+            channels.sort((a, b) => a.createdTimestamp - b.createdTimestamp);
+            for (let i = 1; i < channels.length; i++) {
+              duplicates.push({ type: 'channel', channel: channels[i], reason: `Duplicate of ${channels[0].name}` });
+            }
+          }
+        }
+        
+        for (const [key, categories] of categoryGroups.entries()) {
+          if (categories.length > 1) {
+            // Keep the oldest, delete the rest
+            categories.sort((a, b) => a.createdTimestamp - b.createdTimestamp);
+            for (let i = 1; i < categories.length; i++) {
+              duplicates.push({ type: 'category', channel: categories[i], reason: `Duplicate of ${categories[0].name}` });
+            }
+          }
+        }
+        
+        if (duplicates.length === 0) {
+          return await interaction.editReply({ content: '✅ **No duplicate channels or categories found!**' });
+        }
+        
+        // Delete duplicates
+        let deletedCount = 0;
+        let errorCount = 0;
+        
+        for (const duplicate of duplicates) {
+          try {
+            await duplicate.channel.delete('Duplicate cleanup');
+            deletedCount++;
+            await new Promise(resolve => setTimeout(resolve, 300)); // Rate limit
+          } catch (error) {
+            errorCount++;
+            console.error(`Failed to delete ${duplicate.type} ${duplicate.channel.name}:`, error.message);
+          }
+        }
+        
+        const embed = new EmbedBuilder()
+          .setTitle('✅ Cleanup Complete')
+          .setColor(0x00FF00)
+          .setDescription(`**Deleted:** ${deletedCount} duplicate ${deletedCount === 1 ? 'channel/category' : 'channels/categories'}\n**Errors:** ${errorCount}`)
+          .setFooter({ text: `Cleaned up by: ${interaction.user.tag}` })
+          .setTimestamp();
+        
+        await interaction.editReply({ embeds: [embed] });
+      } catch (error) {
+        await interaction.editReply({ content: `❌ ${getSnarkyResponse('error')} ${error.message}` });
+      }
     }
   }
 
