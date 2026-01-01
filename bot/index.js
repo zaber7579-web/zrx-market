@@ -4092,8 +4092,8 @@ class MiddlemanBot extends EventEmitter {
               categoryGroups.set(normalizedName, []);
             }
             categoryGroups.get(normalizedName).push(channel);
-          } else {
-            // Regular channel
+          } else if (channel.type === 0 || channel.type === 2) {
+            // Text or Voice channel
             const normalizedName = channel.name.toLowerCase().replace(/\s+/g, '-');
             const key = `${normalizedName}-${channel.parent?.id || 'no-parent'}-${channel.type}`;
             if (!channelGroups.has(key)) {
@@ -4128,18 +4128,65 @@ class MiddlemanBot extends EventEmitter {
           return await interaction.editReply({ content: '✅ **No duplicate channels or categories found!**' });
         }
         
-        // Delete duplicates
+        console.log(`Found ${duplicates.length} duplicates to delete:`, duplicates.map(d => `${d.type}: ${d.channel.name}`));
+        
+        // Delete duplicates - delete categories first, then channels
+        // Sort so categories are deleted before channels (channels depend on categories)
+        duplicates.sort((a, b) => {
+          if (a.type === 'category' && b.type === 'channel') return -1;
+          if (a.type === 'channel' && b.type === 'category') return 1;
+          return 0;
+        });
+        
         let deletedCount = 0;
         let errorCount = 0;
         
         for (const duplicate of duplicates) {
           try {
+            console.log(`Deleting ${duplicate.type}: ${duplicate.channel.name} (${duplicate.channel.id})`);
             await duplicate.channel.delete('Duplicate cleanup');
             deletedCount++;
-            await new Promise(resolve => setTimeout(resolve, 300)); // Rate limit
+            await new Promise(resolve => setTimeout(resolve, 500)); // Rate limit - increased delay
           } catch (error) {
             errorCount++;
-            console.error(`Failed to delete ${duplicate.type} ${duplicate.channel.name}:`, error.message);
+            console.error(`Failed to delete ${duplicate.type} ${duplicate.channel.name} (${duplicate.channel.id}):`, error.message);
+          }
+        }
+        
+        // After deleting categories, re-fetch and check for orphaned duplicate channels
+        if (deletedCount > 0) {
+          await guild.channels.fetch(); // Re-fetch after deletions
+          
+          // Check for duplicate channels again (in case some became orphans)
+          const orphanedChannelGroups = new Map();
+          for (const channel of guild.channels.cache.values()) {
+            if ((channel.type === 0 || channel.type === 2) && !channel.parent) {
+              // Orphaned channel (no parent category)
+              const normalizedName = channel.name.toLowerCase().replace(/\s+/g, '-');
+              const key = `${normalizedName}-no-parent-${channel.type}`;
+              if (!orphanedChannelGroups.has(key)) {
+                orphanedChannelGroups.set(key, []);
+              }
+              orphanedChannelGroups.get(key).push(channel);
+            }
+          }
+          
+          // Delete orphaned duplicates
+          for (const [key, channels] of orphanedChannelGroups.entries()) {
+            if (channels.length > 1) {
+              channels.sort((a, b) => a.createdTimestamp - b.createdTimestamp);
+              for (let i = 1; i < channels.length; i++) {
+                try {
+                  console.log(`Deleting orphaned duplicate channel: ${channels[i].name} (${channels[i].id})`);
+                  await channels[i].delete('Orphaned duplicate cleanup');
+                  deletedCount++;
+                  await new Promise(resolve => setTimeout(resolve, 500));
+                } catch (error) {
+                  errorCount++;
+                  console.error(`Failed to delete orphaned channel ${channels[i].name}:`, error.message);
+                }
+              }
+            }
           }
         }
         
@@ -4153,6 +4200,7 @@ class MiddlemanBot extends EventEmitter {
         await interaction.editReply({ embeds: [embed] });
       } catch (error) {
         await interaction.editReply({ content: `❌ ${getSnarkyResponse('error')} ${error.message}` });
+        console.error('Cleanup error:', error);
       }
     }
   }
