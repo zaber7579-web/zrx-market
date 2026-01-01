@@ -4789,8 +4789,7 @@ class MiddlemanBot extends EventEmitter {
       try {
         await this.ai.setAIChannel(interaction.guild.id, channel.id);
         
-        // Start proactive messaging for this channel
-        this.ai.startProactiveMessaging(channel);
+        // Proactive messaging disabled - bot only responds when mentioned or replied to
         
         // Set rate limit on channel
         try {
@@ -4814,26 +4813,9 @@ class MiddlemanBot extends EventEmitter {
   }
 
   startAIProactiveMessaging() {
-    // Start proactive messaging for all configured AI channels
-    if (!this.client || !this.ai) return;
-
-    setTimeout(async () => {
-      try {
-        const guilds = this.client.guilds.cache;
-        for (const [guildId, guild] of guilds) {
-          const aiChannelId = await this.ai.getAIChannel(guildId);
-          if (aiChannelId) {
-            const channel = await guild.channels.fetch(aiChannelId).catch(() => null);
-            if (channel) {
-              this.ai.startProactiveMessaging(channel);
-            }
-          }
-        }
-        console.log('✅ Started proactive AI messaging for all configured channels');
-      } catch (error) {
-        console.error('Error starting proactive AI messaging:', error);
-      }
-    }, 10000); // Wait 10 seconds after bot is ready
+    // Proactive messaging disabled - bot only responds when mentioned or replied to
+    // This function kept for compatibility but does nothing
+    return;
   }
 
   // New command handlers

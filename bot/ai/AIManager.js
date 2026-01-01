@@ -367,7 +367,7 @@ class AIManager {
         // Build context with user tracking (truncate long messages)
         const contextLines = [];
         for (const msg of contextMessages) {
-          const author = msg.author.bot && msg.author.id === this.client?.user?.id ? 'ZRX AI' : msg.author.username;
+          const author = msg.author.bot && msg.author.id === this.client?.user?.id ? 'Miss Death Bot' : msg.author.username;
           let content = (msg.cleanContent || msg.content).substring(0, 100); // Truncate to 100 chars
           contextLines.push(`${author}: ${content}`);
           
