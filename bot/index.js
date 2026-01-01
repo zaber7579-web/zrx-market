@@ -4341,6 +4341,7 @@ class MiddlemanBot extends EventEmitter {
           const categoryName = emoji ? `${emoji} ${name}` : name;
           const existing = guild.channels.cache.find(c => c.name === categoryName.toLowerCase().replace(/\s+/g, '-') && c.type === 4);
           if (existing && !force) {
+            createdCategories.push(existing);
             return existing;
           }
           if (existing && force) {
@@ -4364,6 +4365,20 @@ class MiddlemanBot extends EventEmitter {
         try {
           const existing = guild.channels.cache.find(c => c.name === name.toLowerCase().replace(/\s+/g, '-') && c.parent?.id === category?.id);
           if (existing && !force) {
+            // Apply permissions even if channel exists
+            if (options.permissionOverwrites && options.permissionOverwrites.length > 0) {
+              try {
+                for (const overwrite of options.permissionOverwrites) {
+                  await existing.permissionOverwrites.edit(overwrite.id, {
+                    allow: overwrite.allow || [],
+                    deny: overwrite.deny || []
+                  });
+                }
+              } catch (permError) {
+                errors.push(`Failed to update permissions for channel ${name}: ${permError.message}`);
+              }
+            }
+            createdChannels.push(existing);
             return existing;
           }
           if (existing && force) {
@@ -4582,16 +4597,21 @@ class MiddlemanBot extends EventEmitter {
       await delay(500);
       
       if (clipsCategory && verifiedRole) {
-        await clipsCategory.permissionOverwrites.edit(guild.id, {
-          ViewChannel: false
-        });
-        await clipsCategory.permissionOverwrites.edit(verifiedRole.id, {
-          ViewChannel: true,
-          SendMessages: true,
-          AttachFiles: true,
-          ReadMessageHistory: true
-        });
-        await delay(500);
+        try {
+          await clipsCategory.permissionOverwrites.edit(guild.id, {
+            ViewChannel: false
+          });
+          await delay(300);
+          await clipsCategory.permissionOverwrites.edit(verifiedRole.id, {
+            ViewChannel: true,
+            SendMessages: true,
+            AttachFiles: true,
+            ReadMessageHistory: true
+          });
+          await delay(500);
+        } catch (permError) {
+          errors.push(`Failed to set clips category permissions: ${permError.message}`);
+        }
       }
 
       await createTextChannel(clipsCategory, 'clips', {
@@ -4609,16 +4629,21 @@ class MiddlemanBot extends EventEmitter {
       await delay(500);
       
       if (faceRevsCategory && verifiedRole) {
-        await faceRevsCategory.permissionOverwrites.edit(guild.id, {
-          ViewChannel: false
-        });
-        await faceRevsCategory.permissionOverwrites.edit(verifiedRole.id, {
-          ViewChannel: true,
-          SendMessages: true,
-          AttachFiles: true,
-          ReadMessageHistory: true
-        });
-        await delay(500);
+        try {
+          await faceRevsCategory.permissionOverwrites.edit(guild.id, {
+            ViewChannel: false
+          });
+          await delay(300);
+          await faceRevsCategory.permissionOverwrites.edit(verifiedRole.id, {
+            ViewChannel: true,
+            SendMessages: true,
+            AttachFiles: true,
+            ReadMessageHistory: true
+          });
+          await delay(500);
+        } catch (permError) {
+          errors.push(`Failed to set face revs category permissions: ${permError.message}`);
+        }
       }
 
       await createTextChannel(faceRevsCategory, 'girl-face', {
@@ -4636,15 +4661,20 @@ class MiddlemanBot extends EventEmitter {
       await delay(500);
       
       if (groupActivitiesCategory && verifiedRole) {
-        await groupActivitiesCategory.permissionOverwrites.edit(guild.id, {
-          ViewChannel: false
-        });
-        await groupActivitiesCategory.permissionOverwrites.edit(verifiedRole.id, {
-          ViewChannel: true,
-          SendMessages: true,
-          ReadMessageHistory: true
-        });
-        await delay(500);
+        try {
+          await groupActivitiesCategory.permissionOverwrites.edit(guild.id, {
+            ViewChannel: false
+          });
+          await delay(300);
+          await groupActivitiesCategory.permissionOverwrites.edit(verifiedRole.id, {
+            ViewChannel: true,
+            SendMessages: true,
+            ReadMessageHistory: true
+          });
+          await delay(500);
+        } catch (permError) {
+          errors.push(`Failed to set group activities category permissions: ${permError.message}`);
+        }
       }
 
       await createTextChannel(groupActivitiesCategory, 'roblox', {
@@ -4679,16 +4709,21 @@ class MiddlemanBot extends EventEmitter {
       await delay(500);
       
       if (vcActivitiesCategory && verifiedRole) {
-        await vcActivitiesCategory.permissionOverwrites.edit(guild.id, {
-          ViewChannel: false,
-          Connect: false
-        });
-        await vcActivitiesCategory.permissionOverwrites.edit(verifiedRole.id, {
-          ViewChannel: true,
-          Connect: true,
-          Speak: true
-        });
-        await delay(500);
+        try {
+          await vcActivitiesCategory.permissionOverwrites.edit(guild.id, {
+            ViewChannel: false,
+            Connect: false
+          });
+          await delay(300);
+          await vcActivitiesCategory.permissionOverwrites.edit(verifiedRole.id, {
+            ViewChannel: true,
+            Connect: true,
+            Speak: true
+          });
+          await delay(500);
+        } catch (permError) {
+          errors.push(`Failed to set VC activities category permissions: ${permError.message}`);
+        }
       }
 
       await createVoiceChannel(vcActivitiesCategory, 'Roblox vc!', {
