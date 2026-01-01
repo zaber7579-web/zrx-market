@@ -4440,7 +4440,7 @@ class MiddlemanBot extends EventEmitter {
       
       // Create Verified role (green) - users get this after verification
       const verifiedRole = await createRole('✅ Verified', {
-        colors: [0x00D166],
+        color: 0x00D166,
         mentionable: false,
         hoist: true
       });
@@ -4448,7 +4448,7 @@ class MiddlemanBot extends EventEmitter {
 
       // Create Moderator role (blue) - for moderators
       const moderatorRole = await createRole('👮 Moderator', {
-        colors: [0x5865F2],
+        color: 0x5865F2,
         mentionable: true,
         hoist: true,
         permissions: [
@@ -4463,37 +4463,37 @@ class MiddlemanBot extends EventEmitter {
       await delay(500);
 
       // Create gender roles
-      const sheHerRole = await createRole('she/her', { colors: [0xFF69B4], mentionable: false });
+      const sheHerRole = await createRole('she/her', { color: 0xFF69B4, mentionable: false });
       await delay(300);
-      const heHimRole = await createRole('he/him', { colors: [0x00BFFF], mentionable: false });
+      const heHimRole = await createRole('he/him', { color: 0x00BFFF, mentionable: false });
       await delay(300);
-      const theyThemRole = await createRole('they/them', { colors: [0x9B59B6], mentionable: false });
+      const theyThemRole = await createRole('they/them', { color: 0x9B59B6, mentionable: false });
       await delay(300);
-      const otherRole = await createRole('other', { colors: [0xFFFFFF], mentionable: false });
+      const otherRole = await createRole('other', { color: 0xFFFFFF, mentionable: false });
       await delay(500);
 
       // Create age roles
-      const age12_15 = await createRole('12-15', { colors: [0xFFD700], mentionable: false });
+      const age12_15 = await createRole('12-15', { color: 0xFFD700, mentionable: false });
       await delay(300);
-      const age15_18 = await createRole('15-18', { colors: [0xFFA500], mentionable: false });
+      const age15_18 = await createRole('15-18', { color: 0xFFA500, mentionable: false });
       await delay(300);
-      const age18Plus = await createRole('18+', { colors: [0xFF6347], mentionable: false });
+      const age18Plus = await createRole('18+', { color: 0xFF6347, mentionable: false });
       await delay(500);
 
       // Create relationship roles
-      const takenRole = await createRole('TAKEN!', { colors: [0xFF0000], mentionable: false });
+      const takenRole = await createRole('TAKEN!', { color: 0xFF0000, mentionable: false });
       await delay(300);
-      const singleRole = await createRole('SINGLE', { colors: [0x0000FF], mentionable: false });
+      const singleRole = await createRole('SINGLE', { color: 0x0000FF, mentionable: false });
       await delay(500);
 
       // Create region roles
-      const naRole = await createRole('north american us', { colors: [0x0066CC], mentionable: false });
+      const naRole = await createRole('north american us', { color: 0x0066CC, mentionable: false });
       await delay(300);
-      const asiaRole = await createRole('asia', { colors: [0xFFD700], mentionable: false });
+      const asiaRole = await createRole('asia', { color: 0xFFD700, mentionable: false });
       await delay(300);
-      const africaRole = await createRole('africa', { colors: [0x228B22], mentionable: false });
+      const africaRole = await createRole('africa', { color: 0x228B22, mentionable: false });
       await delay(300);
-      const saRole = await createRole('south amarica', { colors: [0xFF4500], mentionable: false });
+      const saRole = await createRole('south amarica', { color: 0xFF4500, mentionable: false });
       await delay(500);
 
       // Set role hierarchy - bot role should be above all, then moderator, then verified
