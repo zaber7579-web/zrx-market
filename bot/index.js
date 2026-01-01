@@ -4564,17 +4564,22 @@ class MiddlemanBot extends EventEmitter {
       const socialCategory = await createCategory('social', '🤷');
       await delay(500);
       
-      // Set category permissions
+      // Set category permissions (always apply, even if category exists)
       if (socialCategory && verifiedRole) {
-        await socialCategory.permissionOverwrites.edit(guild.id, {
-          ViewChannel: false // @everyone can't see
-        });
-        await socialCategory.permissionOverwrites.edit(verifiedRole.id, {
-          ViewChannel: true, // Verified can see
-          SendMessages: true,
-          ReadMessageHistory: true
-        });
-        await delay(500);
+        try {
+          await socialCategory.permissionOverwrites.edit(guild.id, {
+            ViewChannel: false // @everyone can't see
+          });
+          await delay(300);
+          await socialCategory.permissionOverwrites.edit(verifiedRole.id, {
+            ViewChannel: true, // Verified can see
+            SendMessages: true,
+            ReadMessageHistory: true
+          });
+          await delay(500);
+        } catch (permError) {
+          errors.push(`Failed to set social category permissions: ${permError.message}`);
+        }
       }
 
       await createTextChannel(socialCategory, 'main-chat', {
