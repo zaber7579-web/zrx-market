@@ -133,6 +133,10 @@ class MiddlemanBot extends EventEmitter {
     const AIManager = require('./ai/AIManager');
     this.ai = new AIManager(dbHelpers, this.client);
     
+    // Initialize Network Manager (helperwifi functionality)
+    const NetworkManager = require('./network/NetworkManager');
+    this.network = new NetworkManager();
+    
     // Set client reference after client is ready
       this.client.once(Events.ClientReady, () => {
         this.ai.setClient(this.client);
@@ -973,7 +977,90 @@ class MiddlemanBot extends EventEmitter {
           .addRoleOption(option =>
             option.setName('verify_role')
               .setDescription('Role to give when verified (unlocks channels)')
-              .setRequired(false))
+              .setRequired(false)),
+
+        // Network testing commands (helperwifi functionality)
+        new SlashCommandBuilder()
+          .setName('network')
+          .setDescription('Network testing utilities (educational purposes only)')
+          .addSubcommand(subcommand =>
+            subcommand
+              .setName('ping')
+              .setDescription('Ping a host (ICMP)')
+              .addStringOption(option =>
+                option.setName('host')
+                  .setDescription('Host to ping (IP or domain)')
+                  .setRequired(true))
+              .addIntegerOption(option =>
+                option.setName('count')
+                  .setDescription('Number of packets (1-10)')
+                  .setRequired(false)
+                  .setMinValue(1)
+                  .setMaxValue(10)))
+          .addSubcommand(subcommand =>
+            subcommand
+              .setName('dns')
+              .setDescription('DNS lookup for a hostname')
+              .addStringOption(option =>
+                option.setName('hostname')
+                  .setDescription('Hostname to lookup')
+                  .setRequired(true)))
+          .addSubcommand(subcommand =>
+            subcommand
+              .setName('reverse-dns')
+              .setDescription('Reverse DNS lookup (PTR record)')
+              .addStringOption(option =>
+                option.setName('ip')
+                  .setDescription('IP address to lookup')
+                  .setRequired(true)))
+          .addSubcommand(subcommand =>
+            subcommand
+              .setName('test-connection')
+              .setDescription('Test TCP connection to host:port')
+              .addStringOption(option =>
+                option.setName('host')
+                  .setDescription('Host to test')
+                  .setRequired(true))
+              .addIntegerOption(option =>
+                option.setName('port')
+                  .setDescription('Port to test (1-65535)')
+                  .setRequired(true)
+                  .setMinValue(1)
+                  .setMaxValue(65535))
+              .addIntegerOption(option =>
+                option.setName('timeout')
+                  .setDescription('Timeout in milliseconds (1000-10000)')
+                  .setRequired(false)
+                  .setMinValue(1000)
+                  .setMaxValue(10000)))
+          .addSubcommand(subcommand =>
+            subcommand
+              .setName('port-scan')
+              .setDescription('Scan ports on a host (max 100 ports, educational only)')
+              .addStringOption(option =>
+                option.setName('host')
+                  .setDescription('Host to scan')
+                  .setRequired(true))
+              .addStringOption(option =>
+                option.setName('ports')
+                  .setDescription('Ports to scan (e.g., "80,443,8080" or "80-100")')
+                  .setRequired(true))
+              .addIntegerOption(option =>
+                option.setName('timeout')
+                  .setDescription('Timeout per port in milliseconds (1000-5000)')
+                  .setRequired(false)
+                  .setMinValue(1000)
+                  .setMaxValue(5000))
+              .addIntegerOption(option =>
+                option.setName('delay')
+                  .setDescription('Delay between ports in milliseconds (50-500)')
+                  .setRequired(false)
+                  .setMinValue(50)
+                  .setMaxValue(500)))
+          .addSubcommand(subcommand =>
+            subcommand
+              .setName('info')
+              .setDescription('Get network information about this server'))
       ].map(command => command.toJSON());
 
       const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_BOT_TOKEN);
@@ -1030,7 +1117,7 @@ class MiddlemanBot extends EventEmitter {
     const asyncCommands = ['balance', 'daily', 'work', 'collect', 'slut', 'casinostats', 'coinflip', 'dice', 'double', 'roulette', 'blackjack', 'hit', 'stand', 
                            'stats', 'user', 'trade', 'ai', 'mm', 'blacklist', 'report', 'verify', 'unverify', 'serverstats', 'cleanup', 
                            'casinoadd', 'casinoremove', 'casinoreset', 'setup', 'welcome', 'poll', 'giveaway', 'level', 'leaderboard', 
-                           'announce', 'warn', 'mute', 'kick', 'ban', 'reactionrole', 'verify-setup'];
+                           'announce', 'warn', 'mute', 'kick', 'ban', 'reactionrole', 'verify-setup', 'network'];
     const needsDefer = asyncCommands.includes(command);
     
     // Commands that should be ephemeral (only visible to user)
@@ -1172,6 +1259,9 @@ class MiddlemanBot extends EventEmitter {
           break;
         case 'verify-setup':
           await this.handleSlashVerifySetup(interaction);
+          break;
+        case 'network':
+          await this.handleSlashNetwork(interaction);
           break;
         case 'casinoadd':
           await this.handleSlashCasinoAdd(interaction);
@@ -3224,6 +3314,19 @@ class MiddlemanBot extends EventEmitter {
           inline: false
         },
         {
+          name: '🌐 Network Testing Commands',
+          value: [
+            '`/network ping <host> [count]` - Ping a host (ICMP)',
+            '`/network dns <hostname>` - DNS lookup',
+            '`/network reverse-dns <ip>` - Reverse DNS lookup',
+            '`/network test-connection <host> <port>` - Test TCP connection',
+            '`/network port-scan <host> <ports>` - Scan ports (max 100)',
+            '`/network info` - Get network information',
+            '⚠️ Educational use only - only test networks you own!'
+          ].join('\n'),
+          inline: false
+        },
+        {
           name: '👮 Moderator Commands',
           value: [
             '`/mm accept/decline/complete/list` - Middleman management',
@@ -3358,6 +3461,248 @@ class MiddlemanBot extends EventEmitter {
       await interaction.editReply({ embeds: [embed] });
     } catch (error) {
       await interaction.editReply({ content: `❌ ${getSnarkyResponse('error')} ${error.message}` });
+    }
+  }
+
+  async handleSlashNetwork(interaction) {
+    const subcommand = interaction.options.getSubcommand();
+    const userId = interaction.user.id;
+    const testId = `${userId}-${Date.now()}`;
+
+    // Check if user has too many concurrent tests
+    if (this.network.isTestRunning(userId)) {
+      return await interaction.editReply({ 
+        content: '❌ You have too many active network tests. Please wait for them to complete.' 
+      });
+    }
+
+    // Warning embed for network testing
+    const warningEmbed = new EmbedBuilder()
+      .setColor(0xFFA500)
+      .setTitle('⚠️ Network Testing - Educational Use Only')
+      .setDescription('Only use on networks and devices you own or have explicit permission to test.\nUnauthorized network testing is ILLEGAL.')
+      .setFooter({ text: 'You are responsible for your actions' });
+
+    try {
+      this.network.registerTest(userId, testId);
+
+      switch (subcommand) {
+        case 'ping': {
+          const host = interaction.options.getString('host');
+          const count = interaction.options.getInteger('count') || 4;
+
+          await interaction.editReply({ 
+            embeds: [warningEmbed.setDescription('Pinging host...')],
+            content: null
+          });
+
+          const result = await this.network.ping(host, count);
+          
+          const embed = new EmbedBuilder()
+            .setTitle(`🏓 Ping Results: ${result.host}`)
+            .setColor(result.success ? 0x00D166 : 0xFF0000)
+            .addFields(
+              { name: 'Host', value: result.host, inline: true },
+              { name: 'Packets Sent', value: `${result.packets}`, inline: true },
+              { name: 'Packet Loss', value: `${result.packetLoss}%`, inline: true }
+            )
+            .setFooter({ text: 'Educational purposes only' })
+            .setTimestamp();
+
+          if (result.avgTime !== null) {
+            embed.addFields({ name: 'Average Time', value: `${result.avgTime}ms`, inline: true });
+          }
+          if (result.minTime !== null) {
+            embed.addFields({ name: 'Min/Max Time', value: `${result.minTime}ms / ${result.maxTime}ms`, inline: true });
+          }
+
+          await interaction.editReply({ embeds: [embed] });
+          break;
+        }
+
+        case 'dns': {
+          const hostname = interaction.options.getString('hostname');
+
+          await interaction.editReply({ 
+            embeds: [warningEmbed.setDescription('Looking up DNS...')],
+            content: null
+          });
+
+          const result = await this.network.dnsLookup(hostname);
+          
+          const embed = new EmbedBuilder()
+            .setTitle(`🔍 DNS Lookup: ${result.hostname}`)
+            .setColor(0x5865F2)
+            .addFields(
+              { name: 'Hostname', value: result.hostname, inline: true },
+              { name: 'Type', value: result.ipv6 ? 'IPv6' : 'IPv4', inline: true },
+              { 
+                name: 'Addresses', 
+                value: result.addresses.length > 0 
+                  ? result.addresses.join('\n').substring(0, 1024)
+                  : 'No addresses found',
+                inline: false 
+              }
+            )
+            .setFooter({ text: 'Educational purposes only' })
+            .setTimestamp();
+
+          await interaction.editReply({ embeds: [embed] });
+          break;
+        }
+
+        case 'reverse-dns': {
+          const ip = interaction.options.getString('ip');
+
+          await interaction.editReply({ 
+            embeds: [warningEmbed.setDescription('Looking up reverse DNS...')],
+            content: null
+          });
+
+          const result = await this.network.reverseDnsLookup(ip);
+          
+          const embed = new EmbedBuilder()
+            .setTitle(`🔍 Reverse DNS: ${result.ip}`)
+            .setColor(0x5865F2)
+            .addFields(
+              { name: 'IP Address', value: result.ip, inline: true },
+              { 
+                name: 'Hostnames', 
+                value: result.hostnames.length > 0 
+                  ? result.hostnames.join('\n').substring(0, 1024)
+                  : 'No hostnames found',
+                inline: false 
+              }
+            )
+            .setFooter({ text: 'Educational purposes only' })
+            .setTimestamp();
+
+          await interaction.editReply({ embeds: [embed] });
+          break;
+        }
+
+        case 'test-connection': {
+          const host = interaction.options.getString('host');
+          const port = interaction.options.getInteger('port');
+          const timeout = interaction.options.getInteger('timeout') || 5000;
+
+          await interaction.editReply({ 
+            embeds: [warningEmbed.setDescription(`Testing connection to ${host}:${port}...`)],
+            content: null
+          });
+
+          const result = await this.network.testConnection(host, port, timeout);
+          
+          const embed = new EmbedBuilder()
+            .setTitle(`🔌 Connection Test: ${result.host}:${result.port}`)
+            .setColor(result.success ? 0x00D166 : 0xFF0000)
+            .addFields(
+              { name: 'Host:Port', value: `${result.host}:${result.port}`, inline: true },
+              { name: 'Status', value: result.success ? '✅ Open' : '❌ Closed/Timeout', inline: true },
+              { name: 'Response Time', value: `${result.responseTime}ms`, inline: true },
+              { name: 'Message', value: result.message, inline: false }
+            )
+            .setFooter({ text: 'Educational purposes only' })
+            .setTimestamp();
+
+          await interaction.editReply({ embeds: [embed] });
+          break;
+        }
+
+        case 'port-scan': {
+          const host = interaction.options.getString('host');
+          const ports = interaction.options.getString('ports');
+          const timeout = interaction.options.getInteger('timeout') || 2000;
+          const delay = interaction.options.getInteger('delay') || 100;
+
+          await interaction.editReply({ 
+            embeds: [warningEmbed.setDescription(`Scanning ports on ${host}...\nThis may take a moment.`)],
+            content: null
+          });
+
+          const result = await this.network.portScan(host, ports, timeout, delay);
+          
+          const embed = new EmbedBuilder()
+            .setTitle(`🔍 Port Scan: ${result.host}`)
+            .setColor(0x5865F2)
+            .addFields(
+              { name: 'Host', value: result.host, inline: true },
+              { name: 'Total Ports', value: `${result.totalPorts}`, inline: true },
+              { name: 'Open Ports', value: `${result.openPorts.length}`, inline: true },
+              { name: 'Closed Ports', value: `${result.closedPorts.length}`, inline: true }
+            )
+            .setFooter({ text: 'Educational purposes only - Max 100 ports' })
+            .setTimestamp();
+
+          if (result.openPorts.length > 0) {
+            const openPortsList = result.openPorts.slice(0, 20).join(', ');
+            embed.addFields({ 
+              name: 'Open Ports', 
+              value: result.openPorts.length > 20 
+                ? `${openPortsList}... (+${result.openPorts.length - 20} more)`
+                : openPortsList,
+              inline: false 
+            });
+          }
+
+          await interaction.editReply({ embeds: [embed] });
+          break;
+        }
+
+        case 'info': {
+          await interaction.editReply({ 
+            embeds: [warningEmbed.setDescription('Gathering network information...')],
+            content: null
+          });
+
+          const result = await this.network.getNetworkInfo();
+          
+          const embed = new EmbedBuilder()
+            .setTitle('🌐 Network Information')
+            .setColor(0x5865F2)
+            .addFields(
+              { name: 'Hostname', value: result.hostname, inline: true },
+              { name: 'Platform', value: result.platform, inline: true }
+            )
+            .setFooter({ text: 'Educational purposes only' })
+            .setTimestamp();
+
+          // Add interface information
+          const interfaceFields = [];
+          for (const [name, addresses] of Object.entries(result.interfaces)) {
+            if (addresses.length > 0) {
+              const addrList = addresses
+                .filter(addr => !addr.internal)
+                .map(addr => `${addr.address} (${addr.family})`)
+                .join('\n');
+              if (addrList) {
+                interfaceFields.push({
+                  name: `Interface: ${name}`,
+                  value: addrList.substring(0, 1024),
+                  inline: false
+                });
+              }
+            }
+          }
+
+          if (interfaceFields.length > 0) {
+            embed.addFields(interfaceFields);
+          }
+
+          await interaction.editReply({ embeds: [embed] });
+          break;
+        }
+
+        default:
+          await interaction.editReply({ content: '❌ Unknown network subcommand.' });
+      }
+    } catch (error) {
+      console.error('Network command error:', error);
+      await interaction.editReply({ 
+        content: `❌ ${getSnarkyResponse('error')} ${error.message}` 
+      });
+    } finally {
+      this.network.unregisterTest(userId, testId);
     }
   }
 
